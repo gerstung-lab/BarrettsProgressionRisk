@@ -6,14 +6,34 @@
 renamed from 'binSWGS'}
 \usage{
 segmentRawData(raw.data, fit.data,
-  blacklist = read.table("inst/qDNAseq_blacklistedRegions.txt", header =
-  T, sep = "\\t"), min.probes = 67, gamma2 = 250, cutoff = 0.015,
-  logTransform = F, verbose = T)
+  blacklist = read.table(system.file("extdata",
+  "qDNAseq_blacklistedRegions.txt", package = "BarrettsProgressionRisk"),
+  header = T, sep = "\\t"), min.probes = 67, gamma2 = 250,
+  cutoff = 0.015, logTransform = F, verbose = T)
+}
+\arguments{
+\item{raw.data}{Data frame of raw read counts}
+
+\item{fit.data}{Data frame of fitted read values}
+
+\item{blacklist}{DEF qDNAseq_blacklistedRegions}
+
+\item{min.probes}{minimum number of probes per segment DEF=67  (~1Mb)}
+
+\item{gamma2}{gamma adjustment for pcf DEF=250}
+
+\item{cutoff}{is the residual value cutoff for QC DEF=0.015}
+
+\item{logTransform}{DEF=F}
 }
 \value{
-
+list of objects:
+'seg.vals'=segmented samples that have passed QC, 'residuals'=data frame of per-sample residuals, 'prepped.data'=adjusted raw values, 'seg.plots'=list of per-sample genome-wide plots, 'genome.coverage'=calculated genome coverage, 'failedQC'=segmented samples that have failed QC
 }
 \description{
 This function runs the copynumber::pcf algorithm to segment the sWGS data.
 renamed from 'binSWGS'
+}
+\author{
+skillcoyne
 }

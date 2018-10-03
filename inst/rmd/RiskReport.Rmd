@@ -1,0 +1,182 @@
+---
+title: "Progression Risk Report"
+author: ""
+date: "`r format(Sys.time(), '%d %B %Y')`"
+header-includes:
+  - \usepackage{comment}
+output: 
+  pdf_document: 
+    fig_caption: yes
+    fig_height: 4
+    number_sections: yes
+    toc: yes
+params: 
+  path: '.'
+  info.file: NULL 
+---
+
+
+
+```{r setup, include=FALSE}
+library(BarrettsProgressionRisk)
+library(pander)
+library(ggrepel)
+library(gtable)
+library(grid)
+
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+
+
+path = params$path
+#path='.'
+rawFile = grep('raw', list.files(path, pattern='txt', full.names=T), value=T, ignore.case=T)
+corrFile = grep('corr|fitted', list.files(path, pattern='txt', full.names=T), value=T,ignore.case=T)
+
+#pr = predictRisk(path)
+#save(pr,file='example/pr.Rdata')
+load(file='pr.Rdata')
+
+
+samples = c( sampleNames(pr,T), sampleNames(pr,F) )
+
+blacklist = read.table(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), sep = '\t', header=T)
+
+
+demoFile = params$info.file
+withD = ifelse(length(demoFile) == 1, T, F)
+
+```
+
+Sample files read in:
+
+* Raw file: _`r rawFile`_
+* Fitted file: _`r corrFile`_
+`r if(!withD) {"\\begin{comment}"}`
+* Pathology & p53 IHC reported: _`r demoFile`_
+`r if(!withD) {"\\end{comment}"}`
+
+Samples provided for analysis from QDNAseq files: `r paste(samples, collapse=', ')`. 
+
+`r pander(head(segmentedValues(pr)[,c(1:8)]), caption='Example of the segmented data.', justify='left')`
+
+For processing and predictions these samples are presumed to be from a single patient. If this is not true please provide separate directories for the raw files from each patient.
+
+\pagebreak
+
+# Processing pipeline
+
+## Segment genomes
+
+- Exclude `r nrow(blacklist)` regions known to be poorly covered/highly homologous
+- Apply the piecewise constant fit algorithm (or multi-pcf) to data after exclusion
+- Remove any segments with fewer than 67 supporting bases (ie. equivalent to 1Mb).
+- Evaluate residuals filter samples with error rates greater than the cutoff of 0.015.
+
+### Passed QC
+
+The following samples passed QC post-segmentation.
+`r pander(subset(sampleResiduals(pr), Pass, select=c('sample','varMAD_median')))` 
+
+
+`r if (length(sampleNames(pr,F)) <= 0) {"\\begin{comment}"}`
+### Failed QC
+
+The following samples failed QC post-segmentation.
+`r pander(subset(sampleResiduals(pr), !Pass, select=c('sample','varMAD_median')))` 
+`r if (length(sampleNames(pr,F)) <= 0) {"\\end{comment}"}`
+
+## Post Segmentation Plots
+
+```{r, warning=F, echo=F, fig.height=length(pr$segmented$seg.plots)*2}
+plotSegmentData(pr)
+```
+\pagebreak
+
+# Predictions
+
+Risks per-sample were assigned based on percentile calibrations of the probabilities across all samples used to train the model.  Probabilities that fall in the *blue* are *low* risk, *yellow* are *moderate* risk, and *red* are *high* risk.
+
+For the samples provided the risks are:
+`r pander(predictions(pr), caption='Risk predictions per sample.', justify='left')`
+
+## _Which plot provides a user with more useful information??_
+
+### Prediction Plot A
+
+```{r, fig.height=5}
+recommendations = rx(pr)
+
+#pm = plotModelPredictions()
+showPredictionCalibration() + 
+  geom_point(data=predictions(pr), aes(x=Probability,y=0.5), color='grey39', shape=18, size=5, show.legend = F) + 
+  geom_point(data=predictions(pr), aes(x=Probability,y=0.5,color=Risk), shape=18, size=4, show.legend = F) + 
+  geom_text_repel(data=predictions(pr), aes(x=Probability,y=0.5,label=Sample,angle=45), show.legend = F )
+```
+
+### Prediction Plot B
+
+```{r, fig.height=5}
+# TODO add predictions(pr) as geom_points on the plot and label them.
+pm = plotModelPredictions()
+bp = ggplot_build(pm)
+
+preds = predictions(pr)
+
+preds = cbind(preds, do.call(rbind,lapply(preds$Probability, function(p) {
+  subset(bp[['data']][[1]], p < xmax & p > xmin, select=c('y','fill'))
+})))
+
+for (i in 1:nrow(preds))
+  pm = pm + 
+  geom_point(data=preds[i,], aes(Probability,y,color=Risk), color='grey39', shape=18, size=5) +
+  geom_point(data=preds[i,], aes(Probability,y,color=Risk), color=preds[i,'fill'], shape=18, size=3) + 
+  geom_text_repel(data=preds[i,], aes(Probability,y,label=Sample),nudge_y=1)
+
+pm
+```
+
+
+`r if(!withD) {"\\begin{comment}"}`
+Per-sample p53 IHC and pathology are included using the provided `r demoFile`.  
+
+`r if(!withD) {"\\end{comment}"}`
+
+```{r echo=F, eval=withD}
+demo = read.table(demoFile, sep='\t', header=T)
+recommendations = rx(pr,demoFile)
+```
+
+\pagebreak
+
+## Rx 
+
+Recommendations per pair of samples, presuming these samples come from different timepoint/endoscopies. Each sample was predicted indpendently and recommendations are evaluated with the following criteria:
+
+1. Immediate RFA: *HGD* or *IMC* diagnosis or more than one consecutive *high* risk predictions.
+2. Recheck 6-12 months: One *high* risk prediction or an *aberrant p53 IHC*.
+3. Recheck endoscopy 12-24 months: One or more *moderate* risk predictions.
+4. Regular surveillance 3-5 years: Two or more consecutive *low* risk predictions.
+
+
+If no p53 IHC or pathology information is provided the risks alone are used to provide recommendations.
+
+### Recommendations per pair of samples
+```{r}
+fonts = c('bold.italic','italic','plain','plain' )
+riskCols = RColorBrewer::brewer.pal(11, "RdYlBu")[seq(1,11, 3)]
+tt3 <- gridExtra::ttheme_minimal(
+  core=list(bg_params = list(fill=riskCols[recommendations$rule], col=NA),
+            fg_params=list(fontface=fonts[recommendations$rule]), col='white'),
+  colhead=list(fg_params=list(col="black", fontface=4L)))
+
+table = gridExtra::tableGrob(format(recommendations[,c('Time 1', 'Time 2', 'Rx')], core.just='left'),rows=NULL,theme=tt3  )
+
+table = gtable_add_grob(table,
+        grobs = rectGrob(gp = gpar(fill = NA, lwd = 2)),
+        t = 2, b = nrow(table), l = 1, r = ncol(table))
+
+margin = theme(plot.margin = unit(c(0,0), "cm"))
+gridExtra::grid.arrange(table,nrow=1,ncol=1)
+```
+
+

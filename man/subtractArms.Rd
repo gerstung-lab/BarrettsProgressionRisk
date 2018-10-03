@@ -2,13 +2,21 @@
 % Please edit documentation in R/processSWGS.R
 \name{subtractArms}
 \alias{subtractArms}
-\title{Subtract arms from segs}
+\title{Subtract arm-level values from smaller tile sizes. Used only if tileSegments has been run more than once with 'arms' as one tile size.}
 \usage{
 subtractArms(segments, arms)
 }
-\value{
+\arguments{
+\item{segments}{Matrix from tileSegments}
 
+\item{arms}{Matrix from tileSegments (generally using 'arms' size)}
+}
+\value{
+matrix of values
 }
 \description{
-Subtract arms from segs
+Subtract arm-level values from smaller tile sizes. Used only if tileSegments has been run more than once with 'arms' as one tile size.
+}
+\author{
+skillcoyne
 }

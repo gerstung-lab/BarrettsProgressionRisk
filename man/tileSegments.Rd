@@ -7,10 +7,20 @@ renames 'tile.segmented.data'}
 \usage{
 tileSegments(data, size = 5e+06, build = "hg19", verbose = T)
 }
-\value{
+\arguments{
+\item{data}{a data frame of segmented values (from segmentRawData)}
 
+\item{size}{tile size to use across the genome, DEF=5e6, options are integer values or "arms"}
+
+\item{build}{genome build DEF=hg19}
+}
+\value{
+matrix of weighted mean segmented values per tile
 }
 \description{
 Presumes that the segmented data has already been filtered for num of probes, SD etc
 renames 'tile.segmented.data'
+}
+\author{
+skillcoyne
 }

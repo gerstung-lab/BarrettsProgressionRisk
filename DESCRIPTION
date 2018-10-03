@@ -11,11 +11,20 @@ Depends:
   glmnet (>= 2.0-16),
   copynumber (>= 1.20.0),
   GenomicRanges (>= 1.32.6),
-  dplyr (>= 0.7.6)
-Imports:
-  data.table,
+  dplyr (>= 0.7.6),
+  knitr,
+  rmarkdown,
   ggplot2,
-  gridExtra,
+  gridExtra
+Imports:
+  QDNAseq,
+  Biobase,
+  tidyverse,
+  data.table,
   tibble,
-  Matrix
+  Matrix,
+  grid,
+  ggrepel,
+  gtable,
+  pander
 RoxygenNote: 6.1.0

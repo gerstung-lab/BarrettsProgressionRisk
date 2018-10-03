@@ -1,6 +1,9 @@
 # Renames 'get.chr.lengths'
 chrInfo<-function(chrs = paste('chr', c(1:22, 'X','Y'), sep=''), build='hg19', file=NULL) {
-  local_file =  paste('inst/',build,'_info.txt',sep='')
+  local_file =  paste(build,'_info.txt',sep='')
+  
+  local_file = system.file("extdata", local_file, package="BarrettsProgressionRisk")
+  
   if (is.null(file) & file.exists(local_file))
     file = local_file
 
@@ -99,4 +102,47 @@ medianFilter <- function(x,k){
   runMedian <- runmed(x,k=filtWidth,endrule="median")
 
   return(runMedian)
+}
+
+
+
+## Not used currently...
+.mergeCountFiles<-function(path='.', raw.grep='raw.*read', corr.grep='corr|fitted', build='hg19', verbose=T) {
+  chr.info = chrInfo(build=build)
+  chr.info$chrom = sub('chr', '', chr.info$chrom)
+  
+  rawfiles = grep(raw.grep,list.files(path, 'txt'), value=T, ignore.case=T)
+  
+  pairlist = data.frame()
+  for (name in sub('\\.raw.*','',rawfiles)) {
+    pair = grep(name, list.files(path, 'txt', full.names=T), value=T)
+    
+    pairlist = rbind(pairlist, cbind('name'=name,
+                                     'raw'=pair[which(grepl(raw.grep,pair,ignore.case=T))],
+                                     'fitted'=pair[which(grepl(corr.grep,pair,ignore.case=T))]), stringsAsFactors=F)
+  }
+  
+  merged.raw = NULL; merged.fitted = NULL
+  for (i in 1:nrow(pairlist)) {
+    name = pairlist[i,'name']
+    dtR = data.table::fread(pairlist[i,'raw'])    
+    colnames(dtR)[grep('loc|chr|start|end',colnames(dtR),invert=T)] = name
+    dtF = data.table::fread(pairlist[i,'fitted'])    
+    colnames(dtF)[grep('loc|chr|start|end',colnames(dtF),invert=T)] = name
+    
+    
+    
+    if (is.null(merged.raw)) {
+      merged.raw = dtR
+      merged.fitted = dtF
+    } else {
+      merged.raw = base::merge(merged.raw, dtR, by=c('location','chrom','start','end'), all=T) 
+      merged.fitted = base::merge(merged.fitted, dtF, by=c('location','chrom','start','end'), all=T) 
+    }
+    
+    if (verbose)
+      message(paste( ncol(merged.raw)-4, ' samples merged. ', nrow(merged.raw), ' rows.', sep='' ))
+    
+  }
+  
 }

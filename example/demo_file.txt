@@ -1,0 +1,4 @@
+Sample	Pathology	p53
+Sample.A	NDBE	0
+Sample.B	NDBE	0
+Sample.C	LGD	1

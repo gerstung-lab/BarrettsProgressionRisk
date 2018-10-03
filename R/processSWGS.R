@@ -1,10 +1,12 @@
 
 
-#' Subtract arms from segs
-#' @param
-#' @return
+#' Subtract arm-level values from smaller tile sizes. Used only if tileSegments has been run more than once with 'arms' as one tile size.
+#' @name subtractArms
+#' @param segments Matrix from tileSegments
+#' @param arms Matrix from tileSegments (generally using 'arms' size)
+#' @return matrix of values 
 #'
-#' @author
+#' @author skillcoyne
 #' @export
 subtractArms<-function(segments, arms) {
   get.loc<-function(df) {
@@ -47,12 +49,20 @@ subtractArms<-function(segments, arms) {
 
 #' This function runs the copynumber::pcf algorithm to segment the sWGS data.
 #' renamed from 'binSWGS'
-#' @param
-#' @return
+#' @name segmentRawData
+#' @param raw.data Data frame of raw read counts
+#' @param fit.data Data frame of fitted read values 
+#' @param blacklist DEF qDNAseq_blacklistedRegions
+#' @param min.probes minimum number of probes per segment DEF=67  (~1Mb)
+#' @param gamma2 gamma adjustment for pcf DEF=250
+#' @param cutoff is the residual value cutoff for QC DEF=0.015
+#' @param logTransform DEF=F
+#' @return list of objects:
+#' 'seg.vals'=segmented samples that have passed QC, 'residuals'=data frame of per-sample residuals, 'prepped.data'=adjusted raw values, 'seg.plots'=list of per-sample genome-wide plots, 'genome.coverage'=calculated genome coverage, 'failedQC'=segmented samples that have failed QC
 #'
-#' @author
+#' @author skillcoyne
 #' @export
-segmentRawData<-function(raw.data, fit.data, blacklist=read.table('inst/qDNAseq_blacklistedRegions.txt', header=T, sep='\t'), min.probes=67, gamma2=250, cutoff=0.015, logTransform=F, verbose=T) {
+segmentRawData<-function(raw.data, fit.data, blacklist=read.table(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), header=T, sep='\t'), min.probes=67, gamma2=250, cutoff=0.015, logTransform=F, verbose=T) {
   require(copynumber)
 
   countCols = grep('loc|feat|chr|start|end', colnames(fit.data), invert=T)
@@ -92,7 +102,7 @@ segmentRawData<-function(raw.data, fit.data, blacklist=read.table('inst/qDNAseq_
   good.bins = prepped$good.bins
   window.depths.standardised = prepped$window.depths.standardised
   for(col in which(!is.na(sdevs))) {
-    p = plotSegmentedGenome(fitted = fit.data[good.bins,c(1:4,4+col)], segmented = res[,c(1:5,5+col)], window.depths.std = window.depths.standardised[good.bins,col,drop=F]) + labs(title=colnames(res)[5+col])
+    p = .plotSegmentedGenome(fitted = fit.data[good.bins,c(1:4,4+col)], segmented = res[,c(1:5,5+col)], window.depths.std = window.depths.standardised[good.bins,col,drop=F]) + labs(title=colnames(res)[5+col])
 
     med = median(res[,5+col])
     std = sd(res[,5+col])*2
@@ -102,7 +112,9 @@ segmentRawData<-function(raw.data, fit.data, blacklist=read.table('inst/qDNAseq_
   }
 
   pvr = .per.sample.residual.variance(resids)
-  qcsamples = as.character(subset(pvr, varMAD_median <= cutoff)$sample)
+  pvr$Pass = pvr$varMAD_median <= cutoff
+  
+  qcsamples = as.character(subset(pvr, Pass)$sample)
   if (verbose) message(paste(length(qcsamples), '/', nrow(pvr), ' samples passed QC.', sep=''))
 
   passedQC = res[,c(1:5,grep(paste(qcsamples,collapse='|'), colnames(res)))]
@@ -113,10 +125,13 @@ segmentRawData<-function(raw.data, fit.data, blacklist=read.table('inst/qDNAseq_
 }
 
 
-#' @param
-#' @return
+#' Per-sample complexity score.
+#' @name scoreCX
+#' @param df data frame of genome wide values
+#' @param MARGIN columns or rows (see 'apply')
+#' @return cx value
 #'
-#' @author
+#' @author skillcoyne
 #' @export
 scoreCX <- function(df, MARGIN) {
   cx = apply(df, MARGIN, function(x) {
@@ -128,10 +143,13 @@ scoreCX <- function(df, MARGIN) {
 
 #' Presumes that the segmented data has already been filtered for num of probes, SD etc
 #' renames 'tile.segmented.data'
-#' @param
-#' @return
+#' @name tileSegments
+#' @param data a data frame of segmented values (from segmentRawData) 
+#' @param size tile size to use across the genome, DEF=5e6, options are integer values or "arms"
+#' @param build genome build DEF=hg19
+#' @return matrix of weighted mean segmented values per tile
 #'
-#' @author
+#' @author skillcoyne
 #' @export
 tileSegments<-function(data, size=5e6, build='hg19', verbose=T) {
   require(tibble)
@@ -200,12 +218,8 @@ tileSegments<-function(data, size=5e6, build='hg19', verbose=T) {
 }
 
 
-#' @param
-#' @return
-#'
-#' @author
-#' @export
-plotSegmentedGenome<-function(fitted, segmented,window.depths.std,probes.min=NULL) {
+#' Recommend that this not be used directly. segmentRawData generates these plots as part of the method.
+.plotSegmentedGenome<-function(fitted, segmented,window.depths.std,probes.min=NULL) {
   require(ggplot2)
 
   chr.info = chrInfo(build='hg19')[1:22,]
@@ -230,10 +244,7 @@ plotSegmentedGenome<-function(fitted, segmented,window.depths.std,probes.min=NUL
 }
 
 
-
-
-
-
+# Not used, but available if wanted now.
 .logTransform<-function(x,inf=F) {
   if (is.matrix(x) | is.data.frame(x)) {
     x[] = apply(x, 2, logTV)
@@ -243,6 +254,7 @@ plotSegmentedGenome<-function(fitted, segmented,window.depths.std,probes.min=NUL
   return(x)
 }
 
+# Set up the tiles for a genome
 .tile.genome<-function(tile.w=5e6, chr.info=chrInfo(build='hg19'), allosomes=F) {
   require(GenomicRanges)
 
@@ -299,7 +311,7 @@ plotSegmentedGenome<-function(fitted, segmented,window.depths.std,probes.min=NUL
 }
 
 
-
+# Calculate per-sample residual variance from the list generated in .calculateSegmentResiduals
 .per.sample.residual.variance<-function(segment.residuals) {
   if (is.null(segment.residuals) | !is.list(segment.residuals)) {
     stop("List of segment residuals required")

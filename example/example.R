@@ -1,8 +1,7 @@
 
 library(BarrettsProgressionRisk)
 
-
-pr = predictRisk(path='example/')
+pr = predictRisk(path='.')
 
 # Plot raw data
 plotSegmentData(pr)
@@ -11,5 +10,9 @@ plotSegmentData(pr)
 predictions(pr)
 
 # Get recommendations per sample pair, assuming these were at different timepoint
-rx(pr, 'example/demo_file.txt')
+rx(pr, 'demo_file.txt')
+
+# Samples that failed QC
+sampleNames(pr,F)
+
 
