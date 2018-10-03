@@ -5,12 +5,14 @@ http://pandoc.org/installing.html
 
 
 
-# Example Usage
+# Example Usage for Predicting Barrett's Progression
+
+Using your own data and the qdnaseq.R script found in the example/ directory first process one or more BAM files from a single patient and output the files into a unique directory. Then run `predictRisk(path)`
 
 ```
 library(BarrettsProgressionRisk)
 
-pr = predictRisk(path='.')
+pr = predictRisk(path=<my path>)
 
 # Plot raw data
 plotSegmentData(pr)
@@ -18,8 +20,8 @@ plotSegmentData(pr)
 # output the risk table per sample
 predictions(pr)
 
-# Get recommendations per sample pair, assuming these were at different timepoint
-rx(pr, 'demo_file.txt')
+# Get recommendations per sample pair, assuming these were at different timepoint.  See example/demo_file.txt
+rx(pr, 'clinical_file.txt')
 
 # Samples that failed QC
 sampleNames(pr,F)
@@ -43,3 +45,5 @@ rmd = system.file('rmd','RiskReport.Rmd',package="BarrettsProgressionRisk")
 rmarkdown::render(rmd, params=list(path='.', info.file=NULL), output_dir='.')
 
 ```
+
+
