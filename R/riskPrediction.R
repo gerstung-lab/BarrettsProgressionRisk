@@ -7,7 +7,7 @@
 #'
 #' @author skillcoyne
 #' @export
-predictRisk<-function(path='.', raw.file.grep='raw.*read', corrected.file.grep='corr|fitted', verbose=T) {
+predictRisk<-function(path='.', raw.file.grep='raw.*read', corrected.file.grep='corr|fitted', cache.dir=getcachedir(), verbose=T) {
 
   rawFile = grep(raw.file.grep, list.files(path, pattern='txt', full.names=T), value=T, ignore.case=T)
   corrFile = grep(corrected.file.grep, list.files(path, pattern='txt', full.names=T), value=T,ignore.case=T)
@@ -35,28 +35,36 @@ predictRisk<-function(path='.', raw.file.grep='raw.*read', corrected.file.grep='
   if (length(sampleCols) < 1)
     stop("No sample columns found after genome information columns.")
 
-  if(length(which(sapply(raw.data[,sampleCols], is.integer))) < length(sampleCols))
+  if (length(which(sapply(raw.data[,sampleCols], is.integer))) < length(sampleCols))
     stop(paste("Sample columns in raw read count file contain non-integer data."))
 
-  if(length(which(sapply(fit.data[,sampleCols], is.double))) < length(sampleCols))
-    stop(paste("Sample columns in fitted read count file contain integer data, fractional values expected."))
+  if (length(which(sapply(fit.data[,sampleCols], is.double))) < length(sampleCols))
+    warning(paste("Sample columns in fitted read count file contain integer data, fractional values expected."))
 
   if (verbose) message(paste(length(sampleCols), "sample(s) loaded from",rawFile))
 
-  segmented = segmentRawData(raw.data,fit.data,verbose=verbose)
+  segmented = segmentRawData(raw.data,fit.data,cache.dir=cache.dir,verbose=verbose)
 
-  segtiles = tileSegments(segmented$seg.vals, size=5e6,verbose=verbose)
-  for (i in 1:ncol(segtiles))
-    segtiles[,i] = unit.var(segtiles[,i], z.mean[i], z.sd[i])
+  mergedDf = tryCatch({
+    segtiles = tileSegments(segmented$seg.vals, size=5e6,verbose=verbose)
+    for (i in 1:ncol(segtiles))
+      segtiles[,i] = unit.var(segtiles[,i], z.mean[i], z.sd[i])
+    
+    armtiles = tileSegments(segmented$seg.vals, size='arms',verbose=verbose)
+    for (i in 1:ncol(armtiles))
+      armtiles[,i] = unit.var(armtiles[,i], z.arms.mean[i], z.arms.sd[i])
 
-  armtiles = tileSegments(segmented$seg.vals, size='arms',verbose=verbose)
-  for (i in 1:ncol(armtiles))
-    armtiles[,i] = unit.var(armtiles[,i], z.arms.mean[i], z.arms.sd[i])
-
-  cx.score = unit.var(scoreCX(segtiles,1), mn.cx, sd.cx)
-
-  mergedDf = subtractArms(segtiles, armtiles)
-  mergedDf = cbind(mergedDf, 'cx'=cx.score)
+    cx.score = unit.var(scoreCX(segtiles,1), mn.cx, sd.cx)
+    mergedDf = subtractArms(segtiles, armtiles)
+    
+    cbind(mergedDf, 'cx'=cx.score)
+  }, error = function(e) {
+    msg = paste("ERROR tiling segmented data:", e)
+    print(msg)
+  }, finally = {
+    cache.file = segmented$temp.file
+    print(cache.file)
+  })
 
   sparsed_test_data = Matrix(data=0, nrow=nrow(mergedDf),  ncol=ncol(mergedDf),
                              dimnames=list(rownames(mergedDf),colnames(mergedDf)), sparse=T)

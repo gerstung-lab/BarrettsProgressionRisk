@@ -13,6 +13,7 @@ output:
 params: 
   path: '.'
   info.file: NULL 
+  show.seg.plots: FALSE
 ---
 
 
@@ -28,24 +29,27 @@ knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
 
 
 path = params$path
-#path='.'
 rawFile = grep('raw', list.files(path, pattern='txt', full.names=T), value=T, ignore.case=T)
 corrFile = grep('corr|fitted', list.files(path, pattern='txt', full.names=T), value=T,ignore.case=T)
 
-#pr = predictRisk(path)
-#save(pr,file='example/pr.Rdata')
-load(file='pr.Rdata')
+pr = predictRisk(path)
 
+#load('~/workspace/barrettsprogressionrisk/example/pr.Rdata')
 
 samples = c( sampleNames(pr,T), sampleNames(pr,F) )
 
 blacklist = read.table(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), sep = '\t', header=T)
 
-
 demoFile = params$info.file
 withD = ifelse(length(demoFile) == 1, T, F)
 
+samplesdf = data.frame(matrix(samples, ncol=1))
+if (length(samples) > 10)
+  samplesdf = data.frame(matrix(samples, ncol=3))
+
 ```
+
+##### Input Data
 
 Sample files read in:
 
@@ -55,9 +59,12 @@ Sample files read in:
 * Pathology & p53 IHC reported: _`r demoFile`_
 `r if(!withD) {"\\end{comment}"}`
 
-Samples provided for analysis from QDNAseq files: `r paste(samples, collapse=', ')`. 
+** Samples **
+`r length(samples)` samples provided for analysis from QDNAseq files: 
 
-`r pander(head(segmentedValues(pr)[,c(1:8)]), caption='Example of the segmented data.', justify='left')`
+`r pander(samplesdf, col.names=c(rep('',ncol(samplesdf))))` 
+
+`r pander(segmentedValues(pr)[ sample(1:nrow(segmentedValues(pr)), 10) ,c(1:8)], caption='Example of the segmented data.', justify='left', row.names=F)`
 
 For processing and predictions these samples are presumed to be from a single patient. If this is not true please provide separate directories for the raw files from each patient.
 
@@ -72,36 +79,58 @@ For processing and predictions these samples are presumed to be from a single pa
 - Remove any segments with fewer than 67 supporting bases (ie. equivalent to 1Mb).
 - Evaluate residuals filter samples with error rates greater than the cutoff of 0.015.
 
-### Passed QC
+### Passed Quality Control
 
-The following samples passed QC post-segmentation.
-`r pander(subset(sampleResiduals(pr), Pass, select=c('sample','varMAD_median')))` 
-
+The following samples passed post-segmentation QC, variance cutoff < 0.015:
+`r pander(subset(sampleResiduals(pr), Pass, select=c('sample','varMAD_median')), justify='left')` 
 
 `r if (length(sampleNames(pr,F)) <= 0) {"\\begin{comment}"}`
-### Failed QC
+### Failed Quality Control
 
-The following samples failed QC post-segmentation.
-`r pander(subset(sampleResiduals(pr), !Pass, select=c('sample','varMAD_median')))` 
+The following samples failed post-segmentation QC, variance cutoff > 0.015.
+`r pander(subset(sampleResiduals(pr), !Pass, select=c('sample','varMAD_median')), justify='left')` 
 `r if (length(sampleNames(pr,F)) <= 0) {"\\end{comment}"}`
 
+`r if (!params$show.seg.plots) {"\\begin{comment}"}`
 ## Post Segmentation Plots
-
 ```{r, warning=F, echo=F, fig.height=length(pr$segmented$seg.plots)*2}
 plotSegmentData(pr)
 ```
+`r if (!params$show.seg.plots) {"\\end{comment}"}`
+
 \pagebreak
 
 # Predictions
 
 Risks per-sample were assigned based on percentile calibrations of the probabilities across all samples used to train the model.  Probabilities that fall in the *blue* are *low* risk, *yellow* are *moderate* risk, and *red* are *high* risk.
 
+```{r echo=F}
+riskCols = riskColors()
+fonts = c('plain','italic','bold.italic' )
+names(fonts) = names(riskCols)
+riskCols = adjustcolor(riskCols,alpha.f=0.8)
+names(riskCols) = names(fonts)
+
+tt3 <- gridExtra::ttheme_minimal(
+  core=list(bg_params = list(fill=riskCols[predictions(pr)$Risk], col=NA),
+            fg_params=list(fontface=fonts[predictions(pr)$Risk]), col='white'),
+  colhead=list(fg_params=list(col="black", fontface=4L)),
+  padding = unit(c(3, 3), "mm"), text=element_text(size=11,family='Comic Sans MS'))
+
+df = as.data.frame(predictions(pr))
+df$`Relative Risk` = round(df$`Relative Risk`,2)
+df$Probability = round(df$Probability,2)
+table = gridExtra::tableGrob(format(df, core.just='left'),rows=NULL,theme=tt3  )
+```
+
 For the samples provided the risks are:
-`r pander(predictions(pr), caption='Risk predictions per sample.', justify='left')`
 
-## _Which plot provides a user with more useful information??_
+```{r, fig.width=5, fig.height=length(samples)*0.5}
+#gridExtra::grid.arrange(table)
 
-### Prediction Plot A
+pander(predictions(pr), emphasize.italics.rows=which(predictions(pr)$Risk == 'Moderate'), emphasize.strong.rows=which(predictions(pr)$Risk == 'High'), justify='left', digits=2, row.names=F)
+
+```
 
 ```{r, fig.height=5}
 recommendations = rx(pr)
@@ -113,6 +142,7 @@ showPredictionCalibration() +
   geom_text_repel(data=predictions(pr), aes(x=Probability,y=0.5,label=Sample,angle=45), show.legend = F )
 ```
 
+<!--
 ### Prediction Plot B
 
 ```{r, fig.height=5}
@@ -134,7 +164,7 @@ for (i in 1:nrow(preds))
 
 pm
 ```
-
+-->
 
 `r if(!withD) {"\\begin{comment}"}`
 Per-sample p53 IHC and pathology are included using the provided `r demoFile`.  

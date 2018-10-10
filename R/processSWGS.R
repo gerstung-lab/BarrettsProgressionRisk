@@ -62,7 +62,7 @@ subtractArms<-function(segments, arms) {
 #'
 #' @author skillcoyne
 #' @export
-segmentRawData<-function(raw.data, fit.data, blacklist=read.table(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), header=T, sep='\t'), min.probes=67, gamma2=250, cutoff=0.015, logTransform=F, verbose=T) {
+segmentRawData<-function(raw.data, fit.data, blacklist=read.table(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), header=T, sep='\t'), min.probes=67, gamma2=250, cutoff=0.015, logTransform=F, cache.dir=getcachedir(), verbose=T) {
   require(copynumber)
 
   countCols = grep('loc|feat|chr|start|end', colnames(fit.data), invert=T)
@@ -83,6 +83,8 @@ segmentRawData<-function(raw.data, fit.data, blacklist=read.table(system.file("e
       message(paste("Segmenting", (ncol(data)-2), "samples gamma=",gamma2*sdev))
       res = multipcf( data=data, gamma=gamma2*sdev, fast=F, verbose=verbose, return.est=F )
   }
+  tmp.seg = tempfile("segments.",cache.dir,".Rdata")
+  save.image(file=tmp.seg)
 
   if (!is.null(min.probes) & !is.na(min.probes)) {
     probes = which(res$n.probes < min.probes)
@@ -108,7 +110,7 @@ segmentRawData<-function(raw.data, fit.data, blacklist=read.table(system.file("e
     std = sd(res[,5+col])*2
     p = p + geom_hline(yintercept = c(med-std,med+std), color='grey')
 
-    plist[[col]] = p
+    plist[[colnames(res)[5+col]]] = p
   }
 
   pvr = .per.sample.residual.variance(resids)
@@ -121,7 +123,9 @@ segmentRawData<-function(raw.data, fit.data, blacklist=read.table(system.file("e
   failedQC = res[,unique(c(1:5,grep(paste(qcsamples,collapse='|'), colnames(res), invert=T)) )]
   if (ncol(failedQC) <= 5) failedQC = NULL
 
-  return(list('seg.vals'=passedQC, 'residuals'=pvr, 'prepped.data'=data, 'seg.plots'=plist, 'genome.coverage'=coverage, 'failedQC'=failedQC))
+  save.image(file=tmp.seg)
+
+  return(list('seg.vals'=passedQC, 'residuals'=pvr, 'prepped.data'=data, 'seg.plots'=plist, 'genome.coverage'=coverage, 'failedQC'=failedQC, 'temp.file'=tmp.seg))
 }
 
 
@@ -203,7 +207,6 @@ tileSegments<-function(data, size=5e6, build='hg19', verbose=T) {
   }
 
   message(paste("Mean number of CN segments per genome bin:", round(mean(meanSegs, na.rm=T), 2), "median:", round(median(meanSegs, na.rm=T), 2)))
-
 
   rownames(mergedDf) = paste(mergedDf$chr, ':', mergedDf$start, '-', mergedDf$end, sep='')
   mergedDf[,c(1:3)] = NULL
@@ -342,7 +345,7 @@ tileSegments<-function(data, size=5e6, build='hg19', verbose=T) {
 # preps data for segmentation
 # renamed from prep.pcf.data
 .prepRawSWGS<-function(raw.data,fit.data,blacklist, logTransform=F) {
-  if (is.null(blacklist) | ncol(blacklist) < 3)
+  if (ncol(blacklist) < 3)
     stop('Blacklisted regions missing or incorrectly formatted.\nExpected columnes: chromosome start end')
 
   countCols = grep('loc|feat|chr|start|end', colnames(fit.data), invert=T)

@@ -15,15 +15,22 @@ if (length(grep('raw', list.files(qdnaseq.path,pattern='txt'))) <= 0)
 if(length(grep('corr|fitted', list.files(qdnaseq.path,pattern='txt'))) <= 0)
   stop(paste("No fitted file found in",qdnaseq.path))
 
-if (!file.exists(clin.file))
+if (!file.exists(clin.file)) {
   warning(paste("Clinical information file",clin.file,"does not exist"))
+  clin.file = NULL
+}
+
+print(qdnaseq.path)
+print(clin.file)
+print(output.dir)
+
 
 library(rmarkdown)
 library(knitr)
 
 options(warn = -1)
 rmd = system.file('rmd','RiskReport.Rmd',package="BarrettsProgressionRisk")
-rmarkdown::render(rmd, params=list(path=qdnaseq.path, info.file=clin.file), output_dir=output.dir)
+rmarkdown::render(rmd, params=list(path=path.expand(qdnaseq.path), info.file=clin.file), output_dir=path.expand(output.dir))
 
 message(paste("Report saved to: ", output.dir,'/RiskReport.pdf', sep=''))
 
