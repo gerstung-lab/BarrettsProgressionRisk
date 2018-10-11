@@ -59,11 +59,8 @@ predictRisk<-function(path='.', raw.file.grep='raw.*read', corrected.file.grep='
     
     cbind(mergedDf, 'cx'=cx.score)
   }, error = function(e) {
-    msg = paste("ERROR tiling segmented data:", e)
+    msg = paste("ERROR tiling segmented data:", e, segmented$temp.file)
     print(msg)
-  }, finally = {
-    cache.file = segmented$temp.file
-    print(cache.file)
   })
 
   sparsed_test_data = Matrix(data=0, nrow=nrow(mergedDf),  ncol=ncol(mergedDf),
@@ -217,9 +214,9 @@ rx<-function(brr, demoFile=NULL) {
   p53Col = grep('p53', colnames(pR), value=T, ignore.case=T)
   pathCol = grep('path', colnames(pR), value=T, ignore.case=T)
 
-  rules = as.data.frame(matrix(ncol=3, nrow=nrow(pR), dimnames=list(c(), c('Time 1','Time 2','rule'))))
+  rules = as.data.frame(matrix(ncol=3, nrow=nrow(pR)-1, dimnames=list(c(), c('Time 1','Time 2','rule'))))
   # Consecutive
-  for (i in 1:nrow(pR)) {
+  for (i in 1:(nrow(pR)-1)) {
     risks = table(pR$Risk[i:(i+1)])
     p53 = NULL
     if (length(p53Col) > 0) {

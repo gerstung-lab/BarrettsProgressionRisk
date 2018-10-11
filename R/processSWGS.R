@@ -123,9 +123,12 @@ segmentRawData<-function(raw.data, fit.data, blacklist=read.table(system.file("e
   failedQC = res[,unique(c(1:5,grep(paste(qcsamples,collapse='|'), colnames(res), invert=T)) )]
   if (ncol(failedQC) <= 5) failedQC = NULL
 
-  save.image(file=tmp.seg)
+  bss = list('seg.vals'=passedQC, 'residuals'=pvr, 'prepped.data'=data, 'seg.plots'=plist, 'genome.coverage'=coverage, 'failedQC'=failedQC, 'temp.file'=tmp.seg)
+  
+  class(bss) <- c('SegmentedSWGS', class(bss))
+  save(bss, file=tmp.seg)
 
-  return(list('seg.vals'=passedQC, 'residuals'=pvr, 'prepped.data'=data, 'seg.plots'=plist, 'genome.coverage'=coverage, 'failedQC'=failedQC, 'temp.file'=tmp.seg))
+  return(bss)
 }
 
 
@@ -201,7 +204,7 @@ tileSegments<-function(data, size=5e6, build='hg19', verbose=T) {
       meanSegs = c(meanSegs, length(segments))
 
       # weight means by the coverage of the bin
-      values = apply(as.data.frame(GenomicRanges::elementMetadata(segments)), 2, weighted.mean, w=weights, na.rm=T)
+      values = apply(GenomicRanges::elementMetadata(segments), 2, weighted.mean, w=weights, na.rm=T)
       mergedDf[rows, names(values)] = values
     }
   }

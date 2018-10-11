@@ -32,8 +32,8 @@ path = params$path
 rawFile = grep('raw', list.files(path, pattern='txt', full.names=T), value=T, ignore.case=T)
 corrFile = grep('corr|fitted', list.files(path, pattern='txt', full.names=T), value=T,ignore.case=T)
 
-pr = predictRisk(path)
-
+#pr = predictRisk(path)
+load('~/tmp/pr.Rdata')
 #load('~/workspace/barrettsprogressionrisk/example/pr.Rdata')
 
 samples = c( sampleNames(pr,T), sampleNames(pr,F) )
@@ -80,15 +80,19 @@ For processing and predictions these samples are presumed to be from a single pa
 - Evaluate residuals filter samples with error rates greater than the cutoff of 0.015.
 
 ### Passed Quality Control
-
+```{r,echo=F}
+passed = subset(sampleResiduals(pr), Pass, select=c('sample','varMAD_median'))
+colnames(passed) = c('Sample', 'median(variance(MAD(segments)))')
+passed = cbind('Sample#'=1:nrow(passed), passed)
+```
 The following samples passed post-segmentation QC, variance cutoff < 0.015:
-`r pander(subset(sampleResiduals(pr), Pass, select=c('sample','varMAD_median')), justify='left')` 
+`r pander(passed, justify='left', row.names=F)`
 
 `r if (length(sampleNames(pr,F)) <= 0) {"\\begin{comment}"}`
 ### Failed Quality Control
 
 The following samples failed post-segmentation QC, variance cutoff > 0.015.
-`r pander(subset(sampleResiduals(pr), !Pass, select=c('sample','varMAD_median')), justify='left')` 
+`r pander(subset(sampleResiduals(pr), !Pass, select=c('sample','varMAD_median')), justify='left', row.names=F)` 
 `r if (length(sampleNames(pr,F)) <= 0) {"\\end{comment}"}`
 
 `r if (!params$show.seg.plots) {"\\begin{comment}"}`
@@ -104,7 +108,7 @@ plotSegmentData(pr)
 
 Risks per-sample were assigned based on percentile calibrations of the probabilities across all samples used to train the model.  Probabilities that fall in the *blue* are *low* risk, *yellow* are *moderate* risk, and *red* are *high* risk.
 
-```{r echo=F}
+```{r echo=F, eval=F}
 riskCols = riskColors()
 fonts = c('plain','italic','bold.italic' )
 names(fonts) = names(riskCols)
@@ -120,14 +124,13 @@ tt3 <- gridExtra::ttheme_minimal(
 df = as.data.frame(predictions(pr))
 df$`Relative Risk` = round(df$`Relative Risk`,2)
 df$Probability = round(df$Probability,2)
-table = gridExtra::tableGrob(format(df, core.just='left'),rows=NULL,theme=tt3  )
+table = gridExtra::tableGrob(format(df, core.just='left'),rows=NULL,theme=tt3)
 ```
 
 For the samples provided the risks are:
 
 ```{r, fig.width=5, fig.height=length(samples)*0.5}
 #gridExtra::grid.arrange(table)
-
 pander(predictions(pr), emphasize.italics.rows=which(predictions(pr)$Risk == 'Moderate'), emphasize.strong.rows=which(predictions(pr)$Risk == 'High'), justify='left', digits=2, row.names=F)
 
 ```
@@ -135,11 +138,22 @@ pander(predictions(pr), emphasize.italics.rows=which(predictions(pr)$Risk == 'Mo
 ```{r, fig.height=5}
 recommendations = rx(pr)
 
+y = c(0.3,0.5,0.8)
+names(y) = c('Low','Moderate','High')
+preds = predictions(pr)
+preds$y = y[preds$Risk]
+
 #pm = plotModelPredictions()
-showPredictionCalibration() + 
-  geom_point(data=predictions(pr), aes(x=Probability,y=0.5), color='grey39', shape=18, size=5, show.legend = F) + 
-  geom_point(data=predictions(pr), aes(x=Probability,y=0.5,color=Risk), shape=18, size=4, show.legend = F) + 
-  geom_text_repel(data=predictions(pr), aes(x=Probability,y=0.5,label=Sample,angle=45), show.legend = F )
+pcal = showPredictionCalibration() + 
+  geom_point(data=preds, aes(Probability,y), color='grey39', shape=18, size=5, show.legend = F) + 
+  geom_point(data=preds, aes(Probability,y,color=Risk), shape=18, size=4, show.legend=F) 
+
+if (nrow(preds) <= 5) {
+  pcal = pcal + geom_text_repel(data=preds, aes(Probability,y,label=Sample,angle=45,segment.color=Risk), show.legend=F )
+} else {
+  pcal = pcal + geom_text_repel(data=preds, aes(Probability,y,label=rownames(predictions(pr)),angle=45), segment.color='white',show.legend=F )
+}
+pcal  
 ```
 
 <!--
