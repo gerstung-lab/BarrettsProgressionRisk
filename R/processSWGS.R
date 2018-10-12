@@ -65,6 +65,23 @@ subtractArms<-function(segments, arms) {
 segmentRawData<-function(raw.data, fit.data, blacklist=read.table(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), header=T, sep='\t'), min.probes=67, gamma2=250, cutoff=0.015, logTransform=F, cache.dir=getcachedir(), verbose=T) {
   require(copynumber)
 
+  if (is.data.frame(fit.data)) {
+    raw.data = as.data.frame(raw.data)
+    fit.data = as.data.frame(fit.data)
+  } else {
+    stop("raw and fit data must be provided as data frames with columns: location, chrom, start, end followed by sample column(s).")
+  }
+    
+  chr.info = chrInfo(build='hg19')
+  
+  chrCol = grep('chr',colnames(fit.data))
+  startCol = grep('start',colnames(fit.data))
+  fit.data[,chrCol] = factor(fit.data[,chrCol], levels=levels(chr.info$chr))
+  raw.data[,chrCol] = factor(raw.data[,chrCol], levels=levels(chr.info$chr))
+  
+  fit.data = fit.data[order(fit.data[,chrCol], fit.data[,startCol]),]
+  raw.data = raw.data[order(raw.data[,chrCol], raw.data[,startCol]),]
+  
   countCols = grep('loc|feat|chr|start|end', colnames(fit.data), invert=T)
 
   prepped = .prepRawSWGS(raw.data,fit.data,blacklist,logTransform)
@@ -95,14 +112,15 @@ segmentRawData<-function(raw.data, fit.data, blacklist=read.table(system.file("e
   resids = .calculateSegmentResiduals(res, data, verbose=verbose)
   resids = resids[which(!is.na(sdevs))]
 
-  chr.info = chrInfo(build='hg19')
   coverage = round(sum(with(res, end.pos-start.pos))/chr.info[22,'genome.length'],3)
-
+  if (verbose) message(paste(coverage, 'of the genome covered by segments.'))
+  
   # --- Plot segmented data
   plist = list()
   fit.data = prepped$fit.data
   good.bins = prepped$good.bins
   window.depths.standardised = prepped$window.depths.standardised
+  if (verbose) message('Plotting segmented data.')
   for(col in which(!is.na(sdevs))) {
     p = .plotSegmentedGenome(fitted = fit.data[good.bins,c(1:4,4+col)], segmented = res[,c(1:5,5+col)], window.depths.std = window.depths.standardised[good.bins,col,drop=F]) + labs(title=colnames(res)[5+col])
 
@@ -123,7 +141,7 @@ segmentRawData<-function(raw.data, fit.data, blacklist=read.table(system.file("e
   failedQC = res[,unique(c(1:5,grep(paste(qcsamples,collapse='|'), colnames(res), invert=T)) )]
   if (ncol(failedQC) <= 5) failedQC = NULL
 
-  bss = list('seg.vals'=passedQC, 'residuals'=pvr, 'prepped.data'=data, 'seg.plots'=plist, 'genome.coverage'=coverage, 'failedQC'=failedQC, 'temp.file'=tmp.seg)
+  bss = list('seg.vals'=passedQC, 'residuals'=pvr, 'prepped.data'=data, 'seg.plots'=plist, 'genome.coverage'=coverage, 'failedQC'=failedQC, 'temp.file'=tmp.seg, 'cv.plot' = prepped$cv.plot)
   
   class(bss) <- c('SegmentedSWGS', class(bss))
   save(bss, file=tmp.seg)
@@ -352,9 +370,12 @@ tileSegments<-function(data, size=5e6, build='hg19', verbose=T) {
     stop('Blacklisted regions missing or incorrectly formatted.\nExpected columnes: chromosome start end')
 
   countCols = grep('loc|feat|chr|start|end', colnames(fit.data), invert=T)
+  infoCols = grep('loc|feat|chr|start|end', colnames(fit.data))
 
-  rows = which(fit.data[[1]] %in% raw.data[[1]])
-  fit.data = fit.data[rows,]
+  rows = intersect(fit.data[[1]], raw.data[[1]])
+  #rows = which(fit.data[[1]] %in% raw.data[[1]])
+  fit.data = fit.data[which(fit.data[[1]] %in% rows),]
+  raw.data = raw.data[which(raw.data[[1]] %in% rows),]
 
   window.depths = as.vector(as.matrix(raw.data[,countCols]))/as.vector(as.matrix(fit.data[,countCols]))
 
@@ -363,6 +384,20 @@ tileSegments<-function(data, size=5e6, build='hg19', verbose=T) {
   if (length(negs) > 0) window.depths[negs] = 0
 
   window.depths = matrix(window.depths, ncol=length(countCols))
+
+  chr.info = chrInfo()
+  plist = list()
+  
+  df = cbind(fit.data[,infoCols], window.depths)
+  colnames(df)[-infoCols] = colnames(fit.data)[countCols]
+  df = base::merge(df, chr.info[,c('chr','chr.length')], by.x='chrom',by.y='chr',all.x=T)
+
+  df = reshape::melt(df, measure.vars=colnames(fit.data)[countCols])
+  pp = ggplot(df, aes(x=1:chr.length)) + ylim(c(0, quantile(df$value, probs=0.75, na.rm=T)*2)) +
+    facet_grid(variable~chrom, space='free', scales='free') +
+    geom_point( aes(start, value), color='darkred', alpha=.4) +  
+    labs(title='Coverage', x='Chromosomes', y="corrected depth/15KB") + 
+    theme_bw() + theme(axis.text.x=element_blank(), panel.spacing.x=unit(0,'lines'))
 
   message(paste(nrow(blacklist), "genomic regions in the exclusion list."))
 
@@ -395,5 +430,5 @@ tileSegments<-function(data, size=5e6, build='hg19', verbose=T) {
   data = cbind(fit.data[good.bins,c('chrom','start')],window.depths.standardised[good.bins,!is.na(sdevs)])
   colnames(data)[-c(1:2)] = colnames(raw.data)[countCols]
 
-  return(list('data'=data,'sdevs'=sdevs, 'good.bins'=good.bins, 'window.depths.standardised'=window.depths.standardised, 'fit.data'=fit.data))
+  return(list('data'=data,'sdevs'=sdevs, 'good.bins'=good.bins, 'window.depths.standardised'=window.depths.standardised, 'fit.data'=fit.data, 'cv.plot'=pp))
 }

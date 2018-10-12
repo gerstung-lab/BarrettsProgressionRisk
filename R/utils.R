@@ -10,7 +10,7 @@ getcachedir <- function() {
 }
 
 # Renames 'get.chr.lengths'
-chrInfo<-function(chrs = paste('chr', c(1:22, 'X','Y'), sep=''), build='hg19', file=NULL) {
+chrInfo<-function(chrs =  c(1:22, 'X','Y'), prefix='chr', build='hg19', file=NULL) {
   local_file =  paste(build,'_info.txt',sep='')
   
   local_file = system.file("extdata", local_file, package="BarrettsProgressionRisk")
@@ -19,13 +19,13 @@ chrInfo<-function(chrs = paste('chr', c(1:22, 'X','Y'), sep=''), build='hg19', f
     file = local_file
 
   if (!is.null(file) && file.exists(file)) {
-    message(paste("Reading chromosome information for build ",build," from local file.", sep=''))
+    #message(paste("Reading chromosome information for build ",build," from local file.", sep=''))
     chr.lengths = read.table(file, header=T, sep='\t', stringsAsFactors=F)
   } else {
     chr.lengths = read.table(paste('http://genome.ucsc.edu/goldenpath/help/', build, '.chrom.sizes',sep='') , sep='\t', header=F)
     colnames(chr.lengths) = c('chrom','chr.length')
-    chr.lengths = subset(chr.lengths, chrom %in% chrs)
-    chr.lengths$chrom = factor(chr.lengths$chrom, levels=chrs)
+    chr.lengths = subset(chr.lengths, chrom %in% paste(prefix,chrs, sep=''))
+    chr.lengths$chrom = factor(chr.lengths$chrom, levels=paste(prefix,chrs, sep=''))
     chr.lengths = arrange(chr.lengths, chrom)
 
     cytoband.url = paste('http://hgdownload.cse.ucsc.edu/goldenPath',build,'database/cytoBand.txt.gz',sep='/')
@@ -39,7 +39,7 @@ chrInfo<-function(chrs = paste('chr', c(1:22, 'X','Y'), sep=''), build='hg19', f
 
     cytobands = read.table(cytoband.file, sep='\t', header=F)
     colnames(cytobands) = c('chrom','start','end','band','attr')
-    cytobands$chrom = factor(cytobands$chrom, levels=chrs)
+    cytobands$chrom = factor(cytobands$chrom, levels=paste(prefix,chrs, sep=''))
 
     centromeres = subset(cytobands, attr == 'acen')
 
@@ -55,6 +55,12 @@ chrInfo<-function(chrs = paste('chr', c(1:22, 'X','Y'), sep=''), build='hg19', f
     file = paste('/tmp/', build, '_info.txt', sep='')
 
   write.table(chr.lengths, sep='\t', row.names=F, file=file)
+  
+  indecies = regexpr(paste(chrs,collapse='|'), chr.lengths$chrom, perl=T)
+  for (i in 1:length(indecies)) {
+    chr.lengths$chr[i] = sub(substr(chr.lengths$chrom[i], 1,indecies[i]-1), '',chr.lengths$chrom[i])
+  }
+  chr.lengths$chr = factor(chr.lengths$chr, levels=chrs, ordered = T)
 
   return(chr.lengths)
 }

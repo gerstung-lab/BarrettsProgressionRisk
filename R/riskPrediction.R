@@ -128,15 +128,35 @@ segmentedValues<-function(brr, passQC=T) {
 
 #' Plot genome-wide raw and segmented values for all samples in the segmentation phase.
 #' @name plotSegmentData
-#' @param BarrettsRiskRx object
+#' @param BarrettsRiskRx or SegmentedSWGS object
 #' @return ggplot of raw and segmented values
 #'
 #' @author skillcoyne
 #' @export
 plotSegmentData<-function(brr) {
-  if (class(brr)[1] != 'BarrettsRiskRx')
-    stop("BarrettsRiskRx object missing")
-  do.call(gridExtra::grid.arrange, c(brr$segmented$seg.plots, ncol=1))
+  if (length(which(class(brr) %in% c('BarrettsRiskRx', 'SegmentedSWGS'))) <= 0)
+    stop("BarrettsRiskRx or SegmentedSWGS required")
+  if ('SegmentedSWGS' %in% class(brr) )
+    do.call(gridExtra::grid.arrange, c(brr$seg.plots, ncol=1))
+  else 
+    do.call(gridExtra::grid.arrange, c(brr$segmented$seg.plots, ncol=1))
+}
+
+
+#' Plot genome-wide coverage from adjusted raw data
+#' @name plotCorrectedCoverage
+#' @param BarrettsRiskRx or SegmentedSWGS object
+#' @return ggplot of raw and segmented values
+#'
+#' @author skillcoyne
+#' @export
+plotCorrectedCoverage<-function(brr) {
+  if (length(which(class(brr) %in% c('BarrettsRiskRx', 'SegmentedSWGS'))) <= 0)
+    stop("BarrettsRiskRx or SegmentedSWGS required")
+  if ('SegmentedSWGS' %in% class(brr) )
+    return(brr$cv.plot)
+  else 
+    return(brr$segmented$cv.plot)
 }
 
 #' Use with caution. These are based on estimates of what we think the risk might really be #' and adjusting the resulting risk based on those estimates.
