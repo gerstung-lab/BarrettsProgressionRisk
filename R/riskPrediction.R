@@ -1,3 +1,7 @@
+require(Matrix)
+require(glmnet)
+require(ggplot2)
+
 #' Main method that should be called to use the trained model.
 #' @name predictRisk
 #' @param path where QDNAseq raw and corrected read files are REQ
@@ -44,35 +48,50 @@ predictRisk<-function(path='.', raw.file.grep='raw.*read', corrected.file.grep='
   if (verbose) message(paste(length(sampleCols), "sample(s) loaded from",rawFile))
 
   segmented = segmentRawData(raw.data,fit.data,cache.dir=cache.dir,verbose=verbose)
+  psp = predictRiskFromSegments(segmented, verbose=verbose)
+  
+  return(psp)
+}
 
-  mergedDf = tryCatch({
-    segtiles = tileSegments(segmented$seg.vals, size=5e6,verbose=verbose)
-    for (i in 1:ncol(segtiles))
-      segtiles[,i] = unit.var(segtiles[,i], z.mean[i], z.sd[i])
-    
-    armtiles = tileSegments(segmented$seg.vals, size='arms',verbose=verbose)
-    for (i in 1:ncol(armtiles))
-      armtiles[,i] = unit.var(armtiles[,i], z.arms.mean[i], z.arms.sd[i])
-
-    cx.score = unit.var(scoreCX(segtiles,1), mn.cx, sd.cx)
-    mergedDf = subtractArms(segtiles, armtiles)
-    
-    cbind(mergedDf, 'cx'=cx.score)
+#' Get the per-sample residuals calculated from the segmentation phase.
+#' @name predictRiskFromSegments
+#' @param SegmentedSWGS object
+#' @return Predict segmented data using included model
+#'
+#' @author skillcoyne
+#' @export
+predictRiskFromSegments<-function(swgsObj, verbose=T) {
+  if (class(swgsObj)[1] != 'SegmentedSWGS')
+    stop("SegmentedSWGS object missing")
+  
+    mergedDf = tryCatch({
+      segtiles = tileSegments(swgsObj$seg.vals, size=5e6,verbose=verbose)
+      for (i in 1:ncol(segtiles))
+        segtiles[,i] = unit.var(segtiles[,i], z.mean[i], z.sd[i])
+      
+      armtiles = tileSegments(swgsObj$seg.vals, size='arms',verbose=verbose)
+      for (i in 1:ncol(armtiles))
+        armtiles[,i] = unit.var(armtiles[,i], z.arms.mean[i], z.arms.sd[i])
+      
+      cx.score = unit.var(scoreCX(segtiles,1), mn.cx, sd.cx)
+      mergedDf = subtractArms(segtiles, armtiles)
+      
+      cbind(mergedDf, 'cx'=cx.score)
   }, error = function(e) {
-    msg = paste("ERROR tiling segmented data:", e, segmented$temp.file)
+    msg = paste("ERROR tiling segmented data:", e)
     print(msg)
   })
-
+  
   sparsed_test_data = Matrix(data=0, nrow=nrow(mergedDf),  ncol=ncol(mergedDf),
                              dimnames=list(rownames(mergedDf),colnames(mergedDf)), sparse=T)
   for(i in colnames(mergedDf)) sparsed_test_data[,i] = mergedDf[,i]
-
+  
   probs = predict(fitV, newx=sparsed_test_data, s=lambda, type='response')
   RR = predict(fitV, newx=sparsed_test_data, s=lambda, type='link')
-
+  
   preds = tibble('Sample'=rownames(probs), 'Probability'=probs[,1],
                  'Relative Risk'=RR[,1], 'Risk'=sapply(probs[,1], .risk))
-
+  
   psp = list('predictions'=preds, 'segmented'=segmented)
   class(psp) <- c('BarrettsRiskRx', class(psp))
   return(psp)
@@ -87,9 +106,13 @@ predictRisk<-function(path='.', raw.file.grep='raw.*read', corrected.file.grep='
 #' @author skillcoyne
 #' @export
 sampleResiduals<-function(brr) {
-  if (class(brr)[1] != 'BarrettsRiskRx')
-    stop("BarrettsRiskRx object missing")
-  brr$segmented$residuals
+  
+  if (length(which(class(brr) %in% c('BarrettsRiskRx', 'SegmentedSWGS'))) <= 0)
+    stop("BarrettsRiskRx or SegmentedSWGS required")
+  if ('SegmentedSWGS' %in% class(brr) )
+    return(brr$residuals)
+  else 
+    return(brr$segmented$residuals)  
 }
 
 
@@ -264,13 +287,13 @@ rx<-function(brr, demoFile=NULL) {
 
 
 #' Model predictions plot
-#' @name plotModelPredictions
+#' @name showModelPredictions
 #' @param type RR (relative risk) or P (probability, DEF)
 #' @return ggplot object 
 #'
 #' @author skillcoyne
 #' @export
-plotModelPredictions<-function(type='P') {
+showModelPredictions<-function(type='P') {
   plot.theme = theme(text=element_text(size=12), panel.background=element_blank(), strip.background =element_rect(fill="white"),  
                      strip.text = element_text(size=12), 
                      axis.line=element_line(color='black'), panel.grid.major=element_line(color='grey90'),

@@ -1,3 +1,5 @@
+require(dplyr)
+
 getcachedir <- function() {
   tm <- Sys.getenv(c('TMPDIR', 'TMP', 'TEMP'))
   d <- which(file.info(tm)$isdir & file.access(tm, 2) == 0)

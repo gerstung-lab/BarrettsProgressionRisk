@@ -1,3 +1,83 @@
+#' Run QNDAseq on bam files using previously determined parameters and output the required raw/filtered data files
+#' @name runQDNAseq
+#' @param bamPath Location with bam files to be processed using QDNAseq 
+#' @param outputPath Location to output resulting raw and fitted read files and plots
+#' 
+#' @author 
+#' @export
+runQDNAseq<-function(bamPath, outputPath) {
+  require(Biobase) 
+  require(QDNAseq) 
+  require(tidyverse) 
+  
+  if (length(list.files(bamPath, 'bam')) <= 0)
+    stop("No bam files found in current directory. Exiting.")
+
+  if (!dir.exists(outputPath))
+    dir.create(outputPath, recursive = T)
+  
+  # get/read bin annotations
+  bins <- QDNAseq::getBinAnnotations(binSize = 15)
+  
+  saveRDS(bins, paste(outputPath, "15kbp.rds", sep='/'))
+
+  # write bin annotations
+  pData(bins) %>%
+    dplyr::mutate_at(vars(start, end), funs(as.integer)) %>%
+    write_tsv(paste(outputPath,"15kbp.txt",sep='/'))
+  
+  # process BAM files obtaining read counts within bins
+  readCounts <- QDNAseq::binReadCounts(bins, path = bamPath)
+  
+  pData(readCounts) %>%
+    rownames_to_column(var = "sample") %>%
+    dplyr::select(id = name, everything()) %>%
+    write_tsv(paste(outputPath,"readCountSummary.txt",sep='/'))
+  
+  QDNAseq::exportBins(readCounts, paste(outputPath,"readCounts.txt",sep='/'), logTransform = FALSE)
+  
+  saveRDS(readCounts, paste(outputPath,"readCounts.rds",sep='/'))
+
+  # apply filters for which bins are used, including loess residuals of calibration set
+  # and blacklisted regions both taken from bin annotations
+  readCountsFiltered <- QDNAseq::applyFilters(readCounts, residual = TRUE, blacklist = TRUE)
+  
+  # fix for issue with copy number segmentation arising from zero count bins
+  # plot median read counts as a function of GC content and mappability as an isobar plot
+  pdf(paste(outputPath,"isobar.pdf",sep='/'))
+  isobarPlot(readCountsFiltered)
+  dev.off()
+  
+  # estimate the correction for GC content and mappability
+  readCountsCorrected <- QDNAseq::estimateCorrection(readCountsFiltered)
+  
+  # output raw and fitted read counts
+  features <- fData(readCountsCorrected) %>%
+    as.data.frame %>%
+    rownames_to_column(var = "location") %>%
+    transmute(location, chrom = chromosome, start = as.integer(start), end = as.integer(end))
+  
+  rawReadCounts <- assayData(readCountsCorrected)$counts %>%
+    as.data.frame %>%
+    rownames_to_column(var = "location")
+  features %>%
+    dplyr::left_join(rawReadCounts, by = "location") %>%
+    write_tsv(paste(outputPath,"rawReadCounts.txt",sep='/'))
+  
+  fittedReadCounts <- assayData(readCountsCorrected)$fit %>%
+    as.data.frame %>%
+    rownames_to_column(var = "location") %>%
+    mutate_if(is.numeric, funs(round(., digits = 3)))
+  features %>%
+    dplyr::left_join(fittedReadCounts, by = "location") %>%
+    write_tsv(paste(outputPath,"fittedReadCounts.txt",sep='/'))
+  
+  # noise plot showing relationship between the observed standard deviation in the data
+  # and its read depth
+  pdf(paste(outputPath,"noise.pdf",sep='/'))
+  noisePlot(readCountsCorrected)
+  dev.off()
+}
 
 
 #' Subtract arm-level values from smaller tile sizes. Used only if tileSegments has been run more than once with 'arms' as one tile size.
@@ -63,8 +143,6 @@ subtractArms<-function(segments, arms) {
 #' @author skillcoyne
 #' @export
 segmentRawData<-function(raw.data, fit.data, blacklist=read.table(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), header=T, sep='\t'), min.probes=67, gamma2=250, cutoff=0.015, logTransform=F, cache.dir=getcachedir(), verbose=T) {
-  require(copynumber)
-
   if (is.data.frame(fit.data)) {
     raw.data = as.data.frame(raw.data)
     fit.data = as.data.frame(fit.data)
