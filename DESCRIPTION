@@ -7,10 +7,10 @@ License: GPL-3
 Encoding: UTF-8
 LazyData: true
 Depends:
-  R (>= 3.5.1),
+  R (>= 3.4.1),
   glmnet (>= 2.0-16),
-  copynumber (>= 1.20.0),
-  GenomicRanges (>= 1.32.6),
+  copynumber (>= 1.18.0),
+  GenomicRanges (>= 1.30.3),
   dplyr (>= 0.7.6),
   knitr,
   rmarkdown,
