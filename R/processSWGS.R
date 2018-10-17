@@ -143,7 +143,10 @@ subtractArms<-function(segments, arms) {
 #' @author skillcoyne
 #' @export
 segmentRawData<-function(raw.data, fit.data, blacklist=read.table(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), header=T, sep='\t'), min.probes=67, gamma2=250, cutoff=0.015, logTransform=F, cache.dir=getcachedir(), verbose=T) {
-  if (is.data.frame(fit.data)) {
+  if (is.character(raw.data) & is.character(fit.data)) {
+    raw.data = as.data.frame(data.table::fread(raw.data))
+    fit.data = as.data.frame(data.table::fread(fit.data))
+  } else if (is.data.frame(fit.data)) {
     raw.data = as.data.frame(raw.data)
     fit.data = as.data.frame(fit.data)
   } else {
@@ -175,7 +178,7 @@ segmentRawData<-function(raw.data, fit.data, blacklist=read.table(system.file("e
       colnames(res)[grep('mean', colnames(res))] = colnames(raw.data)[countCols]
       res$sampleID = NULL
   } else { # for most we have multiple samples
-      message(paste("Segmenting", (ncol(data)-2), "samples gamma=",gamma2*sdev))
+      message(paste("Segmenting", (ncol(data)-2), "samples gamma=",round(gamma2*sdev,2)))
       res = multipcf( data=data, gamma=gamma2*sdev, fast=F, verbose=verbose, return.est=F )
   }
   tmp.seg = tempfile("segments.",cache.dir,".Rdata")
@@ -189,7 +192,7 @@ segmentRawData<-function(raw.data, fit.data, blacklist=read.table(system.file("e
 
   resids = .calculateSegmentResiduals(res, data, verbose=verbose)
   resids = resids[which(!is.na(sdevs))]
-
+  
   coverage = round(sum(with(res, end.pos-start.pos))/chr.info[22,'genome.length'],3)
   if (verbose) message(paste(coverage, 'of the genome covered by segments.'))
   
@@ -209,6 +212,12 @@ segmentRawData<-function(raw.data, fit.data, blacklist=read.table(system.file("e
     plist[[colnames(res)[5+col]]] = p
   }
 
+  psegMSE = .per.segment.mse(resids)
+  mse = as_tibble(res[,c(1:5)])
+  for (sample in names(psegMSE)) 
+    mse[[sample]] = psegMSE[[sample]]
+  
+
   pvr = .per.sample.residual.variance(resids)
   pvr$Pass = pvr$varMAD_median <= cutoff
   
@@ -219,12 +228,12 @@ segmentRawData<-function(raw.data, fit.data, blacklist=read.table(system.file("e
   failedQC = res[,unique(c(1:5,grep(paste(qcsamples,collapse='|'), colnames(res), invert=T)) )]
   if (ncol(failedQC) <= 5) failedQC = NULL
 
-  bss = list('seg.vals'=passedQC, 'residuals'=pvr, 'prepped.data'=data, 'seg.plots'=plist, 'genome.coverage'=coverage, 'failedQC'=failedQC, 'temp.file'=tmp.seg, 'cv.plot' = prepped$cv.plot)
-  
-  class(bss) <- c('SegmentedSWGS', class(bss))
-  save(bss, file=tmp.seg)
+  swgsObj = list('seg.vals'=passedQC, 'residuals'=pvr, 'segment.residual.MSE'=mse, 'prepped.data'=data, 'seg.plots'=plist, 
+             'genome.coverage'=coverage, 'failedQC'=failedQC, 'temp.file'=tmp.seg, 'cv.plot' = prepped$cv.plot)
+  class(swgsObj) <- c('SegmentedSWGS', class(swgsObj))
+  save(swgsObj, file=tmp.seg)
 
-  return(bss)
+  return(swgsObj)
 }
 
 
@@ -247,39 +256,49 @@ scoreCX <- function(df, MARGIN) {
 #' Presumes that the segmented data has already been filtered for num of probes, SD etc
 #' renames 'tile.segmented.data'
 #' @name tileSegments
-#' @param data a data frame of segmented values (from segmentRawData) 
+#' @param SegmentedSWGS object from segmentRawData
 #' @param size tile size to use across the genome, DEF=5e6, options are integer values or "arms"
 #' @param build genome build DEF=hg19
 #' @return matrix of weighted mean segmented values per tile
 #'
 #' @author skillcoyne
 #' @export
-tileSegments<-function(data, size=5e6, build='hg19', verbose=T) {
+tileSegments<-function(swgsObj, size=5e6, build='hg19', verbose=T) {
   require(tibble)
-
+  
+  if (class(swgsObj)[1] != 'SegmentedSWGS')
+    stop("SegmentedSWGS object missing")
+  
   if (!is.numeric(size) & size != 'arms')
     stop("Size must be numeric, or 'arms'")
 
+  data = swgsObj$seg.vals
+  mse = swgsObj$segment.residual.MSE
   if (!is.tibble(data)) data = as_tibble(data)
-
+  
+  mse = mse[,intersect(colnames(data), colnames(mse))]
+  
   descCols = sort(union(grep('chr|arm|start|end|probes', colnames(data), ignore.case=T), which(!sapply(data, is.numeric))))
   dataCols = c((descCols[length(descCols)]+1):ncol(data))
-
+  
   chrCol = grep('chr',colnames(data),ignore.case=T, value=T)
   armCol = grep('arm',colnames(data),ignore.case=T,value=T)
   startPos = grep('start',colnames(data),ignore.case=T,value=T)
   endPos = grep('end',colnames(data),ignore.case=T,value=T)
 
   data = data[which(!data[[chrCol]] %in% c('X','Y')),]
+  mse = mse[which(!mse[[chrCol]] %in% c('X','Y')),]
   x1 = data[,c(chrCol, startPos, endPos, colnames(data)[dataCols])]
 
   tiles = .tile.genome(size, chrInfo(build=build), allosomes=length(which(grepl('X|Y', unique(data[[chrCol]])))) > 0)
   gr = GenomicRanges::makeGRangesFromDataFrame(x1, keep.extra.columns=T, start.field=startPos, end.field=endPos  )
+  mseGR = GenomicRanges::makeGRangesFromDataFrame(mse[,c(chrCol,startPos,endPos,colnames(data)[dataCols])], keep.extra.columns=T, start.field=startPos, end.field=endPos  )
 
   mergedDf = (do.call(rbind, lapply(tiles, function(tile) {
     cbind('chr'=as.character(seqnames(tile)), as.data.frame(ranges(tile))[1:2])
   }) ))
   mergedDf[colnames(data)[dataCols]] = NA
+  errorDf = mergedDf
 
   meanSegs = c()
   ov = GenomicRanges::findOverlaps(tiles, gr) # Each tile is a chromosome, so the overlaps are only per chromosome here
@@ -291,8 +310,10 @@ tileSegments<-function(data, size=5e6, build='hg19', verbose=T) {
       bin = currentChr[i]
 
       segments = gr[subjectHits(curov[queryHits(curov) == i])]
+      segMSE = mseGR[subjectHits(curov[queryHits(curov) == i])]
+      
       weights = sapply(as(segments,'GRangesList'),function(r) width(pintersect(bin, r))/width(bin) )
-
+      
       rows = with(mergedDf, which( chr==as.character(seqnames(bin)) & start == start(bin) & end == end(bin)))
       if (length(segments) > 1 & verbose)
         message(paste("chr", chr, "bin", bin, "has", length(segments), "matching segments"))
@@ -301,48 +322,31 @@ tileSegments<-function(data, size=5e6, build='hg19', verbose=T) {
 
       # weight means by the coverage of the bin
       values = apply(GenomicRanges::elementMetadata(segments), 2, weighted.mean, w=weights, na.rm=T)
+      vMSE = apply(GenomicRanges::elementMetadata(segMSE), 2, weighted.mean, w=weights, na.rm=T)
       mergedDf[rows, names(values)] = values
+      errorDf[rows, names(vMSE)] = vMSE
     }
   }
 
   message(paste("Mean number of CN segments per genome bin:", round(mean(meanSegs, na.rm=T), 2), "median:", round(median(meanSegs, na.rm=T), 2)))
 
   rownames(mergedDf) = paste(mergedDf$chr, ':', mergedDf$start, '-', mergedDf$end, sep='')
+  rownames(errorDf) = paste(errorDf$chr, ':', errorDf$start, '-', errorDf$end, sep='')
   mergedDf[,c(1:3)] = NULL
+  errorDf[,c(1:3)] = NULL
   mergedDf = apply(mergedDf,2, function(x) {
     x[is.na(x)] = median(x,na.rm=T)
     return(x)
   })
 
+  errorDf = apply(errorDf,2, function(x) {
+    x[is.na(x)] = median(x,na.rm=T)
+    return(x)
+  })
+  
   # Not sure if this should be NA or 0
   #mergedDf[is.na(mergedDf)] = 0
-  return(t(mergedDf))
-}
-
-
-#' Recommend that this not be used directly. segmentRawData generates these plots as part of the method.
-.plotSegmentedGenome<-function(fitted, segmented,window.depths.std,probes.min=NULL) {
-  require(ggplot2)
-
-  chr.info = chrInfo(build='hg19')[1:22,]
-  chr.info$chrom = sub('chr','', chr.info$chrom)
-  chr.info$chrom = factor(chr.info$chrom, levels=c(1:22),ordered = T)
-
-  fitted$chrom = factor(fitted$chrom, levels=levels(chr.info$chrom))
-  segmented$chrom = factor(segmented$chrom, levels=levels(chr.info$chrom))
-
-  df = cbind.data.frame('chrom'=fitted$chrom, 'position'=fitted$end, 'seg.cov'=window.depths.std[,1])
-  df2 = cbind.data.frame('chrom'=segmented$chrom, 'start'=segmented$start.pos, 'end'=segmented$end.pos, 'seg.val'=segmented[,ncol(segmented)])
-
-  df$chrom = factor(df$chrom, levels=c(1:22), ordered=T)
-  df2$chrom = factor(df2$chrom, levels=c(1:22), ordered=T)
-
-  ggplot(chr.info, aes(x=1:chr.length)) +
-    ylim(0,4) + facet_grid(~chrom, space='free_x', scales='free_x') +
-    geom_point(data=df, aes(x=position, y=seg.cov), color='darkred', alpha=.4) +
-    geom_segment(data=df2, aes(x=start, xend=end, y=seg.val, yend=seg.val), color='green3', lwd=5) +
-    geom_hline(data=df2, aes(yintercept=median(seg.val)), color='white', linetype='dashed') +
-    labs(x='chromosome', y='segmented coverage') + theme_bw() + theme(axis.text.x=element_blank(), panel.spacing.x=unit(0,'lines'))
+  return(list('tiles'=t(mergedDf), 'error'=t(errorDf)))
 }
 
 
@@ -413,6 +417,19 @@ tileSegments<-function(data, size=5e6, build='hg19', verbose=T) {
 }
 
 
+# Calculated per-segment MSE
+.per.segment.mse<-function(segment.residuals) {
+  if (is.null(segment.residuals) | !is.list(segment.residuals)) {
+    stop("List of segment residuals required")
+  }
+
+  lapply(segment.residuals, function(sample) {
+    sapply(sample, function(segment) {
+      mean(segment^2)
+    })
+  })
+}
+
 # Calculate per-sample residual variance from the list generated in .calculateSegmentResiduals
 .per.sample.residual.variance<-function(segment.residuals) {
   if (is.null(segment.residuals) | !is.list(segment.residuals)) {
@@ -442,7 +459,6 @@ tileSegments<-function(data, size=5e6, build='hg19', verbose=T) {
 }
 
 # preps data for segmentation
-# renamed from prep.pcf.data
 .prepRawSWGS<-function(raw.data,fit.data,blacklist, logTransform=F) {
   if (ncol(blacklist) < 3)
     stop('Blacklisted regions missing or incorrectly formatted.\nExpected columnes: chromosome start end')

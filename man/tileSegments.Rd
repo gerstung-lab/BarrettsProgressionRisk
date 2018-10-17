@@ -5,14 +5,14 @@
 \title{Presumes that the segmented data has already been filtered for num of probes, SD etc
 renames 'tile.segmented.data'}
 \usage{
-tileSegments(data, size = 5e+06, build = "hg19", verbose = T)
+tileSegments(swgsObj, size = 5e+06, build = "hg19", verbose = T)
 }
 \arguments{
-\item{data}{a data frame of segmented values (from segmentRawData)}
-
 \item{size}{tile size to use across the genome, DEF=5e6, options are integer values or "arms"}
 
 \item{build}{genome build DEF=hg19}
+
+\item{SegmentedSWGS}{object from segmentRawData}
 }
 \value{
 matrix of weighted mean segmented values per tile

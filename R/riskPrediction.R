@@ -65,16 +65,16 @@ predictRiskFromSegments<-function(swgsObj, verbose=T) {
     stop("SegmentedSWGS object missing")
   
     mergedDf = tryCatch({
-      segtiles = tileSegments(swgsObj$seg.vals, size=5e6,verbose=verbose)
-      for (i in 1:ncol(segtiles))
-        segtiles[,i] = unit.var(segtiles[,i], z.mean[i], z.sd[i])
+      segtiles = tileSegments(swgsObj, size=5e6,verbose=verbose)
+      for (i in 1:ncol(segtiles$tiles))
+        segtiles$tiles[,i] = unit.var(segtiles$tiles[,i], z.mean[i], z.sd[i])
       
-      armtiles = tileSegments(swgsObj$seg.vals, size='arms',verbose=verbose)
-      for (i in 1:ncol(armtiles))
-        armtiles[,i] = unit.var(armtiles[,i], z.arms.mean[i], z.arms.sd[i])
+      armtiles = tileSegments(swgsObj, size='arms',verbose=verbose)
+      for (i in 1:ncol(armtiles$tiles))
+        armtiles$tiles[,i] = unit.var(armtiles$tiles[,i], z.arms.mean[i], z.arms.sd[i])
       
-      cx.score = unit.var(scoreCX(segtiles,1), mn.cx, sd.cx)
-      mergedDf = subtractArms(segtiles, armtiles)
+      cx.score = unit.var(scoreCX(segtiles$tiles,1), mn.cx, sd.cx)
+      mergedDf = subtractArms(segtiles$tiles, armtiles$tiles)
       
       cbind(mergedDf, 'cx'=cx.score)
   }, error = function(e) {
@@ -86,8 +86,27 @@ predictRiskFromSegments<-function(swgsObj, verbose=T) {
                              dimnames=list(rownames(mergedDf),colnames(mergedDf)), sparse=T)
   for(i in colnames(mergedDf)) sparsed_test_data[,i] = mergedDf[,i]
   
-  probs = predict(fitV, newx=sparsed_test_data, s=lambda, type='response')
+  
+  non.zero.coef<-function(fit, s) {
+    cf =  as.matrix(coef(fitV, lambda))
+    cf[which(cf != 0),][-1]
+  }
+  
+  nzc = non.zero.coef(fitV)
+  
+  
+  errorDf = cbind(segtiles$error, armtiles$error)
+
+  perSampleError = apply(errorDf[,names(nzc)], 1, var) * var(nzc)
+
+  pi.hat<-function(x) exp(x)/(1+exp(x))
+  
   RR = predict(fitV, newx=sparsed_test_data, s=lambda, type='link')
+  pi.hat(RR + perSampleError)
+  pi.hat(RR - perSampleError)
+  
+  probs = predict(fitV, newx=sparsed_test_data, s=lambda, type='response')
+  
   
   preds = tibble('Sample'=rownames(probs), 'Probability'=probs[,1],
                  'Relative Risk'=RR[,1], 'Risk'=sapply(probs[,1], .risk))
@@ -149,38 +168,7 @@ segmentedValues<-function(brr, passQC=T) {
   return(df)
 }
 
-#' Plot genome-wide raw and segmented values for all samples in the segmentation phase.
-#' @name plotSegmentData
-#' @param BarrettsRiskRx or SegmentedSWGS object
-#' @return ggplot of raw and segmented values
-#'
-#' @author skillcoyne
-#' @export
-plotSegmentData<-function(brr) {
-  if (length(which(class(brr) %in% c('BarrettsRiskRx', 'SegmentedSWGS'))) <= 0)
-    stop("BarrettsRiskRx or SegmentedSWGS required")
-  if ('SegmentedSWGS' %in% class(brr) )
-    do.call(gridExtra::grid.arrange, c(brr$seg.plots, ncol=1))
-  else 
-    do.call(gridExtra::grid.arrange, c(brr$segmented$seg.plots, ncol=1))
-}
 
-
-#' Plot genome-wide coverage from adjusted raw data
-#' @name plotCorrectedCoverage
-#' @param BarrettsRiskRx or SegmentedSWGS object
-#' @return ggplot of raw and segmented values
-#'
-#' @author skillcoyne
-#' @export
-plotCorrectedCoverage<-function(brr) {
-  if (length(which(class(brr) %in% c('BarrettsRiskRx', 'SegmentedSWGS'))) <= 0)
-    stop("BarrettsRiskRx or SegmentedSWGS required")
-  if ('SegmentedSWGS' %in% class(brr) )
-    return(brr$cv.plot)
-  else 
-    return(brr$segmented$cv.plot)
-}
 
 #' Use with caution. These are based on estimates of what we think the risk might really be #' and adjusting the resulting risk based on those estimates.
 #' @name adjustRisk
@@ -286,66 +274,8 @@ rx<-function(brr, demoFile=NULL) {
 }
 
 
-#' Model predictions plot
-#' @name showModelPredictions
-#' @param type RR (relative risk) or P (probability, DEF)
-#' @return ggplot object 
-#'
-#' @author skillcoyne
-#' @export
-showModelPredictions<-function(type='P') {
-  plot.theme = theme(text=element_text(size=12), panel.background=element_blank(), strip.background =element_rect(fill="white"),  
-                     strip.text = element_text(size=12), 
-                     axis.line=element_line(color='black'), panel.grid.major=element_line(color='grey90'),
-                     panel.border = element_rect(color="grey", fill=NA, size=0.5), panel.spacing = unit(0.1, 'lines')  ) 
-
-  p = ggplot(cxPredictions, aes(Prediction)) + geom_histogram(aes(fill=..x..), breaks=cuts, show.legend = F) +
-      scale_fill_gradientn(colors = hist.pal,  name='') + 
-      plot.theme + labs(title='All samples model predictions', y='n Samples', x='Probability') 
-  if (type == 'RR') {
-    p = ggplot(cxPredictions, aes(Relative.Risk)) + geom_histogram(aes(fill=..x..), bins=20, show.legend = F) +
-      scale_fill_gradientn(colors = hist.pal,  name='') + 
-      plot.theme + labs(title='All samples model predictions', y='n Samples', x='Relative Risk') 
-  }
-  return(p)
-}
 
 
-#' Predictions risk calibration plot
-#' @name showPredictionCalibration
-#' @return ggplot object 
-#'
-#' @author skillcoyne
-#' @export
-showPredictionCalibration<-function() {
-  plot.theme = theme(text=element_text(size=12), panel.background=element_blank(), strip.background =element_rect(fill="white"),  
-                     strip.text = element_text(size=12), 
-                     axis.line=element_line(color='black'), panel.grid.major=element_line(color='grey90'),
-                     panel.border = element_rect(color="grey", fill=NA, size=0.5), panel.spacing = unit(0.1, 'lines')  ) 
-  
-ggplot(pred.confidence, aes(mn, perc)) + geom_smooth(method='lm',formula=y~x, color='grey39', linetype='dashed', size=0.5, fullrange=T) + 
-  geom_rect(aes(xmin=r1, xmax=r2, ymin=0,ymax=1, fill=Risk), alpha=0.6) + 
-  scale_fill_manual(values=risk.colors, limits=levels(pred.confidence$Risk) ) +
-  geom_point() + 
-  geom_errorbar(aes(ymin=ci.low, ymax=ci.high), size=0.5, width=0.01) +
-  scale_color_manual(values=risk.colors,limits=levels(pred.confidence$Risk) ) + 
-  coord_cartesian(xlim=c(0,1), ylim=c(0,1)) +
-  scale_x_continuous(expand=c(0,0),limits=c(-0.5,1.5), breaks=cuts, labels=cuts) + 
-  scale_y_continuous(expand=c(0,0),limits=c(-0.5,1.5), breaks=cuts, labels=cuts) +
-  plot.theme + theme(legend.position = 'bottom') + labs(x='P(Progression)', y='Progressor:Non-Progressor', title='Risk Calibration') 
-}
-
-#' Get the colors used for risks
-#' @name riskColors
-#' @return vector
-#'
-#' @author skillcoyne
-#' @export
-riskColors<-function() {
-  rc = risk.colors
-  names(rc) = c('Low','Moderate','High')
-  return(rc)
-}
 
 # Current rules
 .rule.rx<-function(n) {
