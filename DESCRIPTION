@@ -9,17 +9,15 @@ LazyData: true
 Depends:
   R (>= 3.4.1),
   glmnet (>= 2.0-16),
-  copynumber (>= 1.18.0),
-  GenomicRanges (>= 1.30.3),
-  dplyr (>= 0.7.6),
-  QDNAseq (>= 1.14.0),
-  tidyverse,
-  tibble,
-  Matrix
+  tidyverse
 Imports:
+  copynumber (>= 1.18.0),
+  QDNAseq (>= 1.14.0),
+  GenomicRanges (>= 1.30.3),
+  Matrix,
   Biobase,
+  bootstrap,
   data.table,
-  ggplot2,
   gridExtra,
   grid,
   ggrepel,

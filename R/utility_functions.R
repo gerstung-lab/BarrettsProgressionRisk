@@ -31,7 +31,7 @@ chrInfo<-function(chrs =  c(1:22, 'X','Y'), prefix='chr', build='hg19', file=NUL
     chr.lengths = arrange(chr.lengths, chrom)
 
     cytoband.url = paste('http://hgdownload.cse.ucsc.edu/goldenPath',build,'database/cytoBand.txt.gz',sep='/')
-    cytoband.file = paste('/tmp', paste(build,basename(cytoband.url),sep='_'), sep='/')
+    cytoband.file = paste(.Platform$file.sep,'tmp', paste(build,basename(cytoband.url),sep='_'), sep='/')
 
     tryCatch({
       download.file(cytoband.url, cytoband.file, cacheOK = T)
@@ -52,9 +52,8 @@ chrInfo<-function(chrs =  c(1:22, 'X','Y'), prefix='chr', build='hg19', file=NUL
     chr.lengths$genome.length = cumsum(as.numeric(chr.lengths$chr.length))
   }
 
-  # TODO -- not sure this will work installed on a Windows computer...
   if (is.null(file))
-    file = paste('/tmp/', build, '_info.txt', sep='')
+    file = paste(.Platform$file.sep, 'tmp', .Platform$file.sep, build, '_info.txt', sep='')
 
   write.table(chr.lengths, sep='\t', row.names=F, file=file)
   
@@ -117,15 +116,12 @@ medianFilter <- function(x,k){
       filtWidth <- n
     }
   }
-
   runMedian <- runmed(x,k=filtWidth,endrule="median")
 
   return(runMedian)
 }
 
 .bootstrap.coef.stderr<-function() {
-  require(bootstrap)
-  
   fitCoefs = as.data.frame(as.matrix(coef(fitV, lambda)))[-1,,drop=F]
   fitCoefs = fitCoefs[which(fitCoefs != 0),,drop=F]
   
@@ -138,17 +134,16 @@ medianFilter <- function(x,k){
   colnames(loo.coefs)[-1] = c(1:length(nzcoefs))
   loo.coefs[is.na(loo.coefs)] = 0
   
-  ch = as_tibble(fitCoefs, rownames='coef')
+  ch = tibble::as_tibble(fitCoefs, rownames='coef')
   loo.ch = dplyr::left_join(ch, loo.coefs, by='coef')
-  head(ch)
-  
+
   jk<-function(x) {
     jk = bootstrap::jackknife(x,mean)
     jk$jack.se
   }
   
   ch$jack.se = apply(loo.ch[,-1], 1, jk)
-  ch
+  return(ch)
 }
 
 
