@@ -12,19 +12,19 @@ Depends:
   copynumber (>= 1.18.0),
   GenomicRanges (>= 1.30.3),
   dplyr (>= 0.7.6),
-  knitr,
-  rmarkdown,
-  ggplot2,
-  gridExtra
+  QDNAseq (>=1.16.0)
 Imports:
-  QDNAseq,
   Biobase,
   tidyverse,
   data.table,
   tibble,
   Matrix,
+  ggplot2,
+  gridExtra
   grid,
   ggrepel,
   gtable,
-  pander
+  knitr,
+  rmarkdown,
+  kableExtra
 RoxygenNote: 6.1.0
