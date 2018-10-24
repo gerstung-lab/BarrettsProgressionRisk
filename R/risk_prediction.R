@@ -283,6 +283,7 @@ predictions<-function(brr) {
 }
 
 #' Times per sample are determined by the order of the sample as given by the demoFile, or by the order of the samples in the dataset.
+#' TODO This function presume that each sample is an independent timepoint. As multiple samples are typically collected per timepoint I need to allow the user to indicate that somehow and account for that in the recommendation using the maximum risk.
 #' @name rx
 #' @param BarrettsRiskRx object REQ
 #' @param demoFile for the tab-delimited file that contains a per-sample entry for p53 IHC, Barrett's segment length, patient gender OPTIONAL

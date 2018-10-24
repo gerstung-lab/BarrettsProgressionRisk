@@ -29,13 +29,10 @@ corrFile = grep('corr|fitted', list.files(path, pattern='txt', full.names=T), va
 
 pr = predictRisk(path)
 #load('~/tmp/pr.Rdata')
-#load('~/workspace/barrettsprogressionrisk/example/pr.Rdata')
 
 samples = c( sampleNames(pr,T), sampleNames(pr,F) )
-
 blacklist = read.table(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), sep = '\t', header=T)
 
-#demoFile = '~/workspace/barrettsprogressionrisk/example/demo_file.txt'
 demoFile = params$info.file
 withD = ifelse(!is.null(demoFile), T, F)
 if (withD) demo = read.table(demoFile, sep='\t', header=T)

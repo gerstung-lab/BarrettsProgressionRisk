@@ -12,15 +12,15 @@ Depends:
   copynumber (>= 1.18.0),
   GenomicRanges (>= 1.30.3),
   dplyr (>= 0.7.6),
-  QDNAseq (>=1.16.0)
+  QDNAseq (>= 1.16.0),
+  tidyverse,
+  tibble,
+  Matrix
 Imports:
   Biobase,
-  tidyverse,
   data.table,
-  tibble,
-  Matrix,
   ggplot2,
-  gridExtra
+  gridExtra,
   grid,
   ggrepel,
   gtable,
