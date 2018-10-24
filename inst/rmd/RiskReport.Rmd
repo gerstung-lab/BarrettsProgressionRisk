@@ -1,226 +1,182 @@
 ---
-title: "Progression Risk Report"
+title: "Barrett's Progression Risk Report"
 author: ""
 date: "`r format(Sys.time(), '%d %B %Y')`"
-header-includes:
-  - \usepackage{comment}
 output: 
-  pdf_document: 
-    fig_caption: yes
-    fig_height: 4
-    number_sections: yes
+  html_document: 
     toc: yes
+    toc_float: 
+      collapsed: false
 params: 
   path: '.'
   info.file: NULL 
-  show.seg.plots: FALSE
 ---
 
-
-
 ```{r setup, include=FALSE}
+
 library(BarrettsProgressionRisk)
-library(pander)
+library(knitr)
+library(kableExtra)
 library(ggrepel)
 library(gtable)
 library(grid)
 
 knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
 
-
 path = params$path
 rawFile = grep('raw', list.files(path, pattern='txt', full.names=T), value=T, ignore.case=T)
 corrFile = grep('corr|fitted', list.files(path, pattern='txt', full.names=T), value=T,ignore.case=T)
 
-#pr = predictRisk(path)
-load('~/tmp/pr.Rdata')
+pr = predictRisk(path)
+#load('~/tmp/pr.Rdata')
 #load('~/workspace/barrettsprogressionrisk/example/pr.Rdata')
 
 samples = c( sampleNames(pr,T), sampleNames(pr,F) )
 
 blacklist = read.table(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), sep = '\t', header=T)
 
+#demoFile = '~/workspace/barrettsprogressionrisk/example/demo_file.txt'
 demoFile = params$info.file
-withD = ifelse(length(demoFile) == 1, T, F)
+withD = ifelse(!is.null(demoFile), T, F)
+if (withD) demo = read.table(demoFile, sep='\t', header=T)
 
 samplesdf = data.frame(matrix(samples, ncol=1))
 if (length(samples) > 10)
   samplesdf = data.frame(matrix(samples, ncol=3))
-
 ```
 
-##### Input Data
+
+# Results {.tabset .tabset-fade .tabset-pills}
+
+## Risk Analysis
+
+See the Technical Information tab for a description of the risk probabilities and recommendation rules.
+
+### Individual Risk Per Sample
+
+```{r, fig.height=5}
+riskCols = RColorBrewer::brewer.pal(11, "RdYlBu")[seq(1,11, 3)]
+
+printRisk <- function(x,low,high, risk='Unknown') {
+  img = switch(risk, 
+         'High'='img/Human_body_silhouette-RED.png',
+         'Moderate'='img/Human_body_silhouette-YELLOW.png',
+         'Low'='img/Human_body_silhouette-BLUE.png',
+         'Unknown'='img/Human_body_silhouette-GREY.png')
+  
+  paste0(paste0(c("",rep(paste0('<img src="',img,'" alt="%" width="8"></img>'), x)), collapse=""), ' <b>',x, '%</b> (',low,'%-',high,'%)')
+} 
+
+preds = predictions(pr)
+preds = merge(preds,absoluteRiskCI(pr), by='Sample')
+preds = preds %>% rowwise() %>% dplyr::mutate( img=printRisk(Probability*100,CI.low*100,CI.high*100,Risk) )
+
+kable(preds[,c('Sample','Risk','img')],col.names=c('Sample','Risk','Absolute Risk'), escape=FALSE) %>% kable_styling(bootstrap_options=c('bordered',full_width=T))
+```
+
+### Surveillance/Treatment Rx
+
+```{r}
+recommendations = rx(pr)
+if (withD)
+  recommendations = rx(pr,demoFile)
+```
+
+Based on the provided samples this individual is recommended to return for **`r tolower(rev(recommendations$Rx)[1])`**.
+
+```{r}
+recommendations %>%
+#  mutate( Rx = cell_spec(Rx, "html", color = ifelse(rule %in% c(1,4), 'white', 'black'), background = riskCols[rule], bold = (rule == 1), italic = (rule < 3) ) ) %>%
+  select(`Time 1`, `Time 2`, Rx) %>%
+  kable(format = "html", escape = F) %>%
+  row_spec(nrow(recommendations), bold=T, color=ifelse(recommendations[nrow(recommendations),'rule'] %in% c(1,4), 'white', 'black'), background = riskCols[recommendations[nrow(recommendations),'rule']]) %>%
+  kable_styling("bordered", full_width = F, position = 'left') 
+```
+
+
+## Technical information 
+
+Risks per-sample were assigned based on percentile calibrations of the probabilities across all samples used to build the model.  Probabilities that fall in the blue are *low* risk, yellow are *moderate* risk, and red are *high* risk.
+
+```{r fig.height=4, fig.width=4}
+showPredictionCalibration() 
+```
+
+Surveillance/treatment recommendations are then assessed per pair of samples, presuming these samples come from different timepoint/endoscopies in the same patient. The following rules are applied using copy number risks, p53 IHC, and pathology where available. 
+
+```{r}
+BarrettsProgressionRisk::rxRules %>% #mutate( Rx = cell_spec(Rx, "html", color = ifelse(Rule %in% c(1,4), 'white', 'black'), background = riskCols[Rule], bold = (Rule == 1), italic = (Rule < 3) ) )  %>% 
+  select(Rx, Description) %>%
+  kable(escape=F, caption='Rules for recommending treatment') %>% 
+    kable_styling("basic", full_width = F) 
+```
+
+
+# Input Data {.tabset .tabset-fade .tabset-pills}
 
 Sample files read in:
 
 * Raw file: _`r rawFile`_
 * Fitted file: _`r corrFile`_
-`r if(!withD) {"\\begin{comment}"}`
-* Pathology & p53 IHC reported: _`r demoFile`_
-`r if(!withD) {"\\end{comment}"}`
+`r if(!withD) {"<!--"}`
+* Pathology/p53 IHC file: _`r demoFile`_
+`r if(!withD) {"-->"}`
 
-** Samples **
-`r length(samples)` samples provided for analysis from QDNAseq files: 
+## Samples 
 
-`r pander(samplesdf, col.names=c(rep('',ncol(samplesdf))))` 
+Samples provided for analysis from QDNAseq files: 
 
-`r pander(segmentedValues(pr)[ sample(1:nrow(segmentedValues(pr)), 10) ,c(1:8)], caption='Example of the segmented data.', justify='left', row.names=F)`
+```{r} 
+kable(samplesdf, col.names=rep('Sample', 1:ncol(samplesdf))) %>% kable_styling(bootstrap_options=c('striped','condensed',full_width=F))
+``` 
 
 For processing and predictions these samples are presumed to be from a single patient. If this is not true please provide separate directories for the raw files from each patient.
 
-\pagebreak
+## p53 IHC & Pathology
 
-# Processing pipeline
+`r if(withD) {"<!--"}`
+No pathology or p53 IHC provided. 
+`r if(withD) {"-->"}`
+
+```{r eval=withD}
+kable(demo, caption='p53 and/or pathology information per sample')  %>% kable_styling(bootstrap_options=c('striped','condensed',full_width=F))
+```
+
+
+# Processing pipeline {.tabset .tabset-fade .tabset-pills}
+
+1. Exclude `r nrow(blacklist)` regions known to be poorly covered/highly homologous
+2. Segment the data to identify CN breakpoints using the piecewise constant fit algorithm (or multi-pcf) 
+3. Remove any segments with fewer than 67 supporting base pairs (i.e. equivalent to 1Mb)
+4. Evaluate per-sample errors and exclude samples with high error rates from risk prediction and recommendation
+
+## Quality Control
+
+`r nrow(subset(sampleResiduals(pr), Pass))`/`r nrow(sampleResiduals(pr))` samples have passed post-segmentation quality control with a variance cutoff less than 0.015.
+
+```{r,echo=F}
+sampleResiduals(pr) %>%
+  mutate(
+    Pass = cell_spec(Pass, "html", color=ifelse(Pass, 'green', 'red'), background=ifelse(Pass, 'green', 'red'))) %>%
+  select(sample, varMAD_median, Pass) %>%
+  kable(format = "html", escape = F, col.names=c('Sample','med(var(MAD(segments)))', 'QC Pass/Fail')) %>%
+  kable_styling("bordered", full_width = F, position = 'left') 
+```
 
 ## Segment genomes
 
-- Exclude `r nrow(blacklist)` regions known to be poorly covered/highly homologous
-- Apply the piecewise constant fit algorithm (or multi-pcf) to data after exclusion
-- Remove any segments with fewer than 67 supporting bases (ie. equivalent to 1Mb).
-- Evaluate residuals filter samples with error rates greater than the cutoff of 0.015.
+`r nrow(segmentedValues(pr))` segments have been fitted across all samples, these are estimated to cover `r round(pr$segmented$genome.coverage*100,2)`% of the genome.
 
-### Passed Quality Control
-```{r,echo=F}
-passed = subset(sampleResiduals(pr), Pass, select=c('sample','varMAD_median'))
-colnames(passed) = c('Sample', 'median(variance(MAD(segments)))')
-passed = cbind('Sample#'=1:nrow(passed), passed)
+```{r} 
+kable(segmentedValues(pr)[ sample(1:nrow(segmentedValues(pr)), 10) ,c(1:8)], row.names=F, caption='Example regions of the segmented data.') %>% kable_styling(bootstrap_options=c('striped','condensed',full_width=F, position='left'))
 ```
-The following samples passed post-segmentation QC, variance cutoff < 0.015:
-`r pander(passed, justify='left', row.names=F)`
 
-`r if (length(sampleNames(pr,F)) <= 0) {"\\begin{comment}"}`
-### Failed Quality Control
-
-The following samples failed post-segmentation QC, variance cutoff > 0.015.
-`r pander(subset(sampleResiduals(pr), !Pass, select=c('sample','varMAD_median')), justify='left', row.names=F)` 
-`r if (length(sampleNames(pr,F)) <= 0) {"\\end{comment}"}`
-
-`r if (!params$show.seg.plots) {"\\begin{comment}"}`
 ## Post Segmentation Plots
-```{r, warning=F, echo=F, fig.height=length(pr$segmented$seg.plots)*2}
+
+These plots show the raw relative copy number fitted values from QDNAseq (red points) plotted across the genome (chromosomes 1-22) for each sample. The green show the segmented CN values that are used by the model to predict progression risk.
+
+```{r, warning=F, echo=F, fig.height=length(pr$segmented$seg.plots)*4, width=10}
 plotSegmentData(pr)
-```
-`r if (!params$show.seg.plots) {"\\end{comment}"}`
-
-\pagebreak
-
-# Predictions
-
-Risks per-sample were assigned based on percentile calibrations of the probabilities across all samples used to train the model.  Probabilities that fall in the *blue* are *low* risk, *yellow* are *moderate* risk, and *red* are *high* risk.
-
-```{r echo=F, eval=F}
-riskCols = riskColors()
-fonts = c('plain','italic','bold.italic' )
-names(fonts) = names(riskCols)
-riskCols = adjustcolor(riskCols,alpha.f=0.8)
-names(riskCols) = names(fonts)
-
-tt3 <- gridExtra::ttheme_minimal(
-  core=list(bg_params = list(fill=riskCols[predictions(pr)$Risk], col=NA),
-            fg_params=list(fontface=fonts[predictions(pr)$Risk]), col='white'),
-  colhead=list(fg_params=list(col="black", fontface=4L)),
-  padding = unit(c(3, 3), "mm"), text=element_text(size=11,family='Comic Sans MS'))
-
-df = as.data.frame(predictions(pr))
-df$`Relative Risk` = round(df$`Relative Risk`,2)
-df$Probability = round(df$Probability,2)
-table = gridExtra::tableGrob(format(df, core.just='left'),rows=NULL,theme=tt3)
-```
-
-For the samples provided the risks are:
-
-```{r, fig.width=5, fig.height=length(samples)*0.5}
-#gridExtra::grid.arrange(table)
-pander(predictions(pr), emphasize.italics.rows=which(predictions(pr)$Risk == 'Moderate'), emphasize.strong.rows=which(predictions(pr)$Risk == 'High'), justify='left', digits=2, row.names=F)
-
-```
-
-```{r, fig.height=5}
-recommendations = rx(pr)
-
-y = c(0.3,0.5,0.8)
-names(y) = c('Low','Moderate','High')
-preds = predictions(pr)
-preds$y = y[preds$Risk]
-
-#pm = plotModelPredictions()
-pcal = showPredictionCalibration() + 
-  geom_point(data=preds, aes(Probability,y), color='grey39', shape=18, size=5, show.legend = F) + 
-  geom_point(data=preds, aes(Probability,y,color=Risk), shape=18, size=4, show.legend=F) 
-
-if (nrow(preds) <= 5) {
-  pcal = pcal + geom_text_repel(data=preds, aes(Probability,y,label=Sample,angle=45,segment.color=Risk), show.legend=F )
-} else {
-  pcal = pcal + geom_text_repel(data=preds, aes(Probability,y,label=rownames(predictions(pr)),angle=45), segment.color='white',show.legend=F )
-}
-pcal  
-```
-
-<!--
-### Prediction Plot B
-
-```{r, fig.height=5}
-# TODO add predictions(pr) as geom_points on the plot and label them.
-pm = plotModelPredictions()
-bp = ggplot_build(pm)
-
-preds = predictions(pr)
-
-preds = cbind(preds, do.call(rbind,lapply(preds$Probability, function(p) {
-  subset(bp[['data']][[1]], p < xmax & p > xmin, select=c('y','fill'))
-})))
-
-for (i in 1:nrow(preds))
-  pm = pm + 
-  geom_point(data=preds[i,], aes(Probability,y,color=Risk), color='grey39', shape=18, size=5) +
-  geom_point(data=preds[i,], aes(Probability,y,color=Risk), color=preds[i,'fill'], shape=18, size=3) + 
-  geom_text_repel(data=preds[i,], aes(Probability,y,label=Sample),nudge_y=1)
-
-pm
-```
--->
-
-`r if(!withD) {"\\begin{comment}"}`
-Per-sample p53 IHC and pathology are included using the provided `r demoFile`.  
-
-`r if(!withD) {"\\end{comment}"}`
-
-```{r echo=F, eval=withD}
-demo = read.table(demoFile, sep='\t', header=T)
-recommendations = rx(pr,demoFile)
-```
-
-\pagebreak
-
-## Rx 
-
-Recommendations per pair of samples, presuming these samples come from different timepoint/endoscopies. Each sample was predicted indpendently and recommendations are evaluated with the following criteria:
-
-1. Immediate RFA: *HGD* or *IMC* diagnosis or more than one consecutive *high* risk predictions.
-2. Recheck 6-12 months: One *high* risk prediction or an *aberrant p53 IHC*.
-3. Recheck endoscopy 12-24 months: One or more *moderate* risk predictions.
-4. Regular surveillance 3-5 years: Two or more consecutive *low* risk predictions.
-
-
-If no p53 IHC or pathology information is provided the risks alone are used to provide recommendations.
-
-### Recommendations per pair of samples
-```{r}
-fonts = c('bold.italic','italic','plain','plain' )
-riskCols = RColorBrewer::brewer.pal(11, "RdYlBu")[seq(1,11, 3)]
-tt3 <- gridExtra::ttheme_minimal(
-  core=list(bg_params = list(fill=riskCols[recommendations$rule], col=NA),
-            fg_params=list(fontface=fonts[recommendations$rule]), col='white'),
-  colhead=list(fg_params=list(col="black", fontface=4L)))
-
-table = gridExtra::tableGrob(format(recommendations[,c('Time 1', 'Time 2', 'Rx')], core.just='left'),rows=NULL,theme=tt3  )
-
-table = gtable_add_grob(table,
-        grobs = rectGrob(gp = gpar(fill = NA, lwd = 2)),
-        t = 2, b = nrow(table), l = 1, r = ncol(table))
-
-margin = theme(plot.margin = unit(c(0,0), "cm"))
-gridExtra::grid.arrange(table,nrow=1,ncol=1)
 ```
 
 

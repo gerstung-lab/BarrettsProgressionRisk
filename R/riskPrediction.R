@@ -1,6 +1,23 @@
-require(Matrix)
-require(glmnet)
-require(ggplot2)
+
+#' Times per sample are determined by the order of the sample as given by the demoFile, or by the order of the samples in the dataset.
+#' @name rxRules
+#' @return A table describing recommendation rules
+#' @author skillcoyne
+#' @export
+rxRules<-
+  tibble(
+    'Rule' = c(1:4),
+    'Rx' = c('Immediate RFA', 'Recheck in 6-12 months',
+             'Recheck in 12-24 months','Regular surveillance in 3-5 years'),
+    'Description' = c(
+      'HGD or IMC diagnosis or more than one consecutive high risk predictions.',
+      'One high risk prediction or an aberrant p53 IHC.',
+      'One or more moderate risk predictions.',
+      'Two or more consecutive low risk predictions.')
+  )
+
+
+pi.hat<-function(x) exp(x)/(1+exp(x))
 
 #' Main method that should be called to use the trained model.
 #' @name predictRisk
@@ -11,8 +28,13 @@ require(ggplot2)
 #'
 #' @author skillcoyne
 #' @export
-predictRisk<-function(path='.', raw.file.grep='raw.*read', corrected.file.grep='corr|fitted', cache.dir=getcachedir(), verbose=T) {
+predictRisk<-function(path='.', raw.file.grep='raw.*read', corrected.file.grep='corr|fitted', cache.dir=NULL, verbose=T) {
 
+  if (is.null(cache.dir))
+    cache.dir = getcachedir()
+
+  if (!exists('z.mean')) stop("sysdata file failed to load")
+    
   rawFile = grep(raw.file.grep, list.files(path, pattern='txt', full.names=T), value=T, ignore.case=T)
   corrFile = grep(corrected.file.grep, list.files(path, pattern='txt', full.names=T), value=T,ignore.case=T)
 
@@ -86,34 +108,72 @@ predictRiskFromSegments<-function(swgsObj, verbose=T) {
                              dimnames=list(rownames(mergedDf),colnames(mergedDf)), sparse=T)
   for(i in colnames(mergedDf)) sparsed_test_data[,i] = mergedDf[,i]
   
+  coef.error = .bootstrap.coef.stderr()
   
-  non.zero.coef<-function(fit, s) {
-    cf =  as.matrix(coef(fitV, lambda))
-    cf[which(cf != 0),][-1]
-  }
+  Xerr = cbind(segtiles$error, armtiles$error)
   
-  nzc = non.zero.coef(fitV)
+  Xerr_diag = apply(Xerr, 1, function(x) { diag(as.matrix(x^2)) })
+  # Not sure aobut this step...
+  covB = cov(coef.error[,'jack.se',drop=F])[1]
+  X = t(mergedDf[,coef.error$coef])
+  B = coef.error[,'1',drop=F]
   
-  
-  errorDf = cbind(segtiles$error, armtiles$error)
+  Var_rr = apply(X,2,function(x) sum(x*covB*x))+sapply(Xerr_diag, function(x) sum(B*x*B))
+  perSampleError = sqrt( Var_rr )
 
-  perSampleError = apply(errorDf[,names(nzc)], 1, var) * var(nzc)
-
-  pi.hat<-function(x) exp(x)/(1+exp(x))
-  
   RR = predict(fitV, newx=sparsed_test_data, s=lambda, type='link')
-  pi.hat(RR + perSampleError)
+  probs = pi.hat(RR)
+  
   pi.hat(RR - perSampleError)
+  pi.hat(RR)
+  pi.hat(RR + perSampleError)[,1]
   
-  probs = predict(fitV, newx=sparsed_test_data, s=lambda, type='response')
+  preds = tibble('Sample'=rownames(probs), 'Probability'=round(probs[,1],2), 
+                 'Relative Risk'=RR[,1], 
+                 'Risk'=sapply(probs[,1], .risk))
   
-  
-  preds = tibble('Sample'=rownames(probs), 'Probability'=probs[,1],
-                 'Relative Risk'=RR[,1], 'Risk'=sapply(probs[,1], .risk))
-  
-  psp = list('predictions'=preds, 'segmented'=segmented)
+  psp = list('predictions'=preds, 'segmented'=swgsObj, 'per.sample.error'=perSampleError)
   class(psp) <- c('BarrettsRiskRx', class(psp))
   return(psp)
+}
+
+#' Calculate upper and lower boudaries for the absolute risk (probabilities) provided by predictRisk
+#' @name absoluteRiskCI
+#' @param BarrettsRiskRx object
+#' @return Data frame of per-sample low and high absolute risk with risk categories applied
+#' @author skillcoyne
+#' @export
+absoluteRiskCI<-function(psp) {
+  if (length(which(class(psp) %in% c('BarrettsRiskRx'))) <= 0)
+    stop("BarrettsRiskRx object required")
+  
+  low = round(pi.hat(psp$predictions$`Relative Risk`-psp$per.sample.error),2)
+  high = round(pi.hat(psp$predictions$`Relative Risk`+psp$per.sample.error),2)
+  preds = tibble('Sample'=psp$predictions$Sample, 
+                 'CI.low'=low,
+                 'Risk.low'=sapply(low, .risk),
+                 'CI.high'=high,
+                 'Risk.high'=sapply(high, .risk))
+  return(preds)
+}
+
+#' Calculate upper and lower boudaries for the relative risk provided by predictRisk
+#' @name relativeRiskCI
+#' @param BarrettsRiskRx object
+#' @return Data frame of per-sample low and high relative risk
+#'
+#' @author skillcoyne
+#' @export
+relativeRiskCI<-function(psp) {
+  if (length(which(class(psp) %in% c('BarrettsRiskRx'))) <= 0)
+    stop("BarrettsRiskRx object required")
+  
+  low = (psp$predictions$`Relative Risk`-psp$per.sample.error)
+  high = (psp$predictions$`Relative Risk`+psp$per.sample.error)
+  preds = tibble('Sample'=rownames(probs), 
+                 'CI.RR.low'=low,
+                 'CI.RR.high'=high)
+  return(preds)
 }
 
 
@@ -121,7 +181,6 @@ predictRiskFromSegments<-function(swgsObj, verbose=T) {
 #' @name sampleResiduals
 #' @param BarrettsRiskRx object
 #' @return Data frame of per-sample residual variance, used in QC of samples.
-#'
 #' @author skillcoyne
 #' @export
 sampleResiduals<-function(brr) {
@@ -273,15 +332,9 @@ rx<-function(brr, demoFile=NULL) {
   return(rules)
 }
 
-
-
-
-
 # Current rules
 .rule.rx<-function(n) {
-  rr = c('Immediate RFA', 'Recheck 6-12 months',
-         'Recheck 12-24 months','Regular surveillance 3-5 years')
-  return(rr[n])
+  return( subset(rxRules, Rule == n)$Rx )
 }
 
 

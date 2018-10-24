@@ -75,16 +75,16 @@ showPredictionCalibration<-function() {
                      axis.line=element_line(color='black'), panel.grid.major=element_line(color='grey90'),
                      panel.border = element_rect(color="grey", fill=NA, size=0.5), panel.spacing = unit(0.1, 'lines')  ) 
   
-  ggplot(pred.confidence, aes(mn, perc)) + geom_smooth(method='lm',formula=y~x, color='grey39', linetype='dashed', size=0.5, fullrange=T) + 
+  ggplot(pred.confidence, aes(mn, perc)) + 
     geom_rect(aes(xmin=r1, xmax=r2, ymin=0,ymax=1, fill=Risk), alpha=0.6) + 
     scale_fill_manual(values=risk.colors, limits=levels(pred.confidence$Risk) ) +
-    geom_point() + 
-    geom_errorbar(aes(ymin=ci.low, ymax=ci.high), size=0.5, width=0.01) +
-    scale_color_manual(values=risk.colors,limits=levels(pred.confidence$Risk) ) + 
+    geom_vline(xintercept=cuts[2:(length(cuts)-1)], color='grey88') +
+    geom_smooth(method='lm',formula=y~x, color='grey39', linetype='dashed', fill='grey88', size=0.5, fullrange=T) + 
+    geom_point() + geom_errorbar(aes(ymin=ci.low, ymax=ci.high), size=0.5, width=0.01) +
     coord_cartesian(xlim=c(0,1), ylim=c(0,1)) +
     scale_x_continuous(expand=c(0,0),limits=c(-0.5,1.5), breaks=cuts, labels=cuts) + 
     scale_y_continuous(expand=c(0,0),limits=c(-0.5,1.5), breaks=cuts, labels=cuts) +
-    plot.theme + theme(legend.position = 'bottom') + labs(x='P(Progression)', y='Progressor:Non-Progressor', title='Risk Calibration') 
+    plot.theme + theme(legend.position = 'bottom') + labs(x='mean(Absolute Risk)', y='Progressor:Non-Progressor', title='Risk Calibration') 
 }
 
 #' Get the colors used for risks

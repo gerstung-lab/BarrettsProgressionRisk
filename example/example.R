@@ -1,7 +1,7 @@
 
 library(BarrettsProgressionRisk)
 
-pr = predictRisk(path='.')
+pr = predictRisk(path='example/')
 
 # Plot raw data
 plotSegmentData(pr)

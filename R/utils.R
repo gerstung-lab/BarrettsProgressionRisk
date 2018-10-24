@@ -1,4 +1,3 @@
-require(dplyr)
 
 getcachedir <- function() {
   tm <- Sys.getenv(c('TMPDIR', 'TMP', 'TEMP'))
@@ -121,6 +120,34 @@ medianFilter <- function(x,k){
   runMedian <- runmed(x,k=filtWidth,endrule="median")
 
   return(runMedian)
+}
+
+.bootstrap.coef.stderr<-function() {
+  require(bootstrap)
+  
+  fitCoefs = as.data.frame(as.matrix(coef(fitV, lambda)))[-1,,drop=F]
+  fitCoefs = fitCoefs[which(fitCoefs != 0),,drop=F]
+  
+  cfs = unique(unlist(sapply(nzcoefs, function(x) x[['coef']])))
+  loo.coefs = data.frame(matrix(ncol=0,nrow=length(cfs)))
+  loo.coefs$coef = cfs
+  for (pt in names(nzcoefs)) {
+    loo.coefs = dplyr::full_join(loo.coefs, nzcoefs[[pt]], by='coef')
+  }
+  colnames(loo.coefs)[-1] = c(1:length(nzcoefs))
+  loo.coefs[is.na(loo.coefs)] = 0
+  
+  ch = as_tibble(fitCoefs, rownames='coef')
+  loo.ch = dplyr::left_join(ch, loo.coefs, by='coef')
+  head(ch)
+  
+  jk<-function(x) {
+    jk = bootstrap::jackknife(x,mean)
+    jk$jack.se
+  }
+  
+  ch$jack.se = apply(loo.ch[,-1], 1, jk)
+  ch
 }
 
 

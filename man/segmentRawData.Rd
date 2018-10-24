@@ -10,7 +10,7 @@ segmentRawData(raw.data, fit.data,
   "qDNAseq_blacklistedRegions.txt", package = "BarrettsProgressionRisk"),
   header = T, sep = "\\t"), min.probes = 67, gamma2 = 250,
   cutoff = 0.015, logTransform = F, cache.dir = getcachedir(),
-  verbose = T)
+  build = "hg19", verbose = T)
 }
 \arguments{
 \item{raw.data}{Data frame of raw read counts}

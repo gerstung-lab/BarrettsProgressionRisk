@@ -5,8 +5,7 @@
 \title{Main method that should be called to use the trained model.}
 \usage{
 predictRisk(path = ".", raw.file.grep = "raw.*read",
-  corrected.file.grep = "corr|fitted", cache.dir = getcachedir(),
-  verbose = T)
+  corrected.file.grep = "corr|fitted", cache.dir = NULL, verbose = T)
 }
 \arguments{
 \item{path}{where QDNAseq raw and corrected read files are REQ}
