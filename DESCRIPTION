@@ -12,7 +12,7 @@ Depends:
   copynumber (>= 1.18.0),
   GenomicRanges (>= 1.30.3),
   dplyr (>= 0.7.6),
-  QDNAseq (>= 1.16.0),
+  QDNAseq (>= 1.14.0),
   tidyverse,
   tibble,
   Matrix
