@@ -1,5 +1,6 @@
 
-getcachedir <- function() {
+# Gets a temp cache directory, not really used yet
+getcachedir<-function() {
   tm <- Sys.getenv(c('TMPDIR', 'TMP', 'TEMP'))
   d <- which(file.info(tm)$isdir & file.access(tm, 2) == 0)
   if (length(d) > 0)
