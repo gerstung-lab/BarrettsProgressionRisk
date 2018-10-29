@@ -111,7 +111,6 @@ predictRiskFromSegments<-function(swgsObj, verbose=T) {
   coef.error = .bootstrap.coef.stderr()
   
   Xerr = cbind(segtiles$error, armtiles$error)
-  
   Xerr_diag = apply(Xerr, 1, function(x) { diag(as.matrix(x^2)) })
   # Not sure aobut this step...
   covB = cov(coef.error[,'jack.se',drop=F])[1]
@@ -124,15 +123,11 @@ predictRiskFromSegments<-function(swgsObj, verbose=T) {
   RR = predict(fitV, newx=sparsed_test_data, s=lambda, type='link')
   probs = pi.hat(RR)
   
-  pi.hat(RR - perSampleError)
-  pi.hat(RR)
-  pi.hat(RR + perSampleError)[,1]
-  
   preds = tibble('Sample'=rownames(probs), 'Probability'=round(probs[,1],2), 
                  'Relative Risk'=RR[,1], 
                  'Risk'=sapply(probs[,1], .risk))
   
-  psp = list('predictions'=preds, 'segmented'=swgsObj, 'per.sample.error'=perSampleError)
+  psp = list('predictions'=preds, 'segmented'=swgsObj, 'per.sample.error'=perSampleError, 'tiles'=mergedDf)
   class(psp) <- c('BarrettsRiskRx', class(psp))
   return(psp)
 }
@@ -286,19 +281,22 @@ predictions<-function(brr) {
 #' TODO This function presume that each sample is an independent timepoint. As multiple samples are typically collected per timepoint I need to allow the user to indicate that somehow and account for that in the recommendation using the maximum risk.
 #' @name rx
 #' @param BarrettsRiskRx object REQ
-#' @param demoFile for the tab-delimited file that contains a per-sample entry for p53 IHC, Barrett's segment length, patient gender OPTIONAL
+#' @param sample.info Data frame from the 'loadSampleInformation()' function that contains a per-sample entry 
 #' @return A table that includes recommendations per timepoint.
 #'
 #' @author skillcoyne
 #' @export
-rx<-function(brr, demoFile=NULL) {
+rx<-function(brr, sample.info=NULL) {
   if (class(brr)[1] != 'BarrettsRiskRx')
     stop("BarrettsRiskRx object required")
 
   pR = brr$predictions
 
-  if (!is.null(demoFile))
-    pR = .loadDemoData(demoFile, pR$Sample, pR)
+  if (!is.null(sample.info)) 
+    pR = .setUpRxTable(sample.info, pR)
+  
+  ## TODO check endoscopy number, get max prediction per endo? etc
+  
 
   pR$Risk = factor(pR$Risk, levels=c('Low','Moderate','High'), ordered=T)
   pR$Sample = as.character(pR$Sample)
@@ -344,33 +342,24 @@ rx<-function(brr, demoFile=NULL) {
   return(as.character(subset(pred.confidence, p <= r2 & p >= r1)$Risk))
 }
 
-# Loads a data file with per-sample information on pathology, p53 IHC, etc
-.loadDemoData<-function(file, samplenames, predDf) {
-  demo = as.data.frame(data.table::fread(file))
 
-  if (nrow(demo) > length(samplenames)) {
-    warning(paste("Not all samples in",file,"are represented in the data files."))
-    demo = subset(demo, Sample %in% samplenames)
+.readFile<-function(file, ...) {
+  if ( tools::file_ext(file) %in% c('xlsx','xls') ) {
+    data = readxl::read_xlsx(file,1)
+  } else {
+    data = readr::read_tsv(file, col_names=T, trim_ws=T, ...)  
   }
+  return(data)
+}
 
-  if (nrow(demo) < length(samplenames)) {
+# Loads a data file with per-sample information on pathology, p53 IHC, etc
+.setUpRxTable<-function(sample.info, predDf) {
+  if (nrow(sample.info) < nrow(predDf)) {
     warning(paste("Fewer samples in",file,"than in the data files. Ignoring demo data."))
     return(NULL)
   }
 
-  path = grep('path',colnames(demo),ignore.case=T,value=T)
-  p53 = grep('p53',colnames(demo),ignore.case=T,value=T)
-
-  if( length(path) <= 0 | length(p53) <= 0 ) {
-    warning(paste("p53 IHC or pathology not available, recommendations will be limited to available information and risk prediction."))
-  }
-
-  beLen = grep('length',colnames(demo),ignore.case=T,value=T)
-  gender = grep('gender|sex',colnames(demo),ignore.case=T,value=T)
-
-  preds = base::merge(predDf, demo[,c('Sample',path,p53,beLen,gender)],by='Sample')
-
-  #intersect(demo$Sample, preds$Sample)
-
+  preds = left_join(predDf, sample.info, by='Sample')
+    
   return(preds)
 }

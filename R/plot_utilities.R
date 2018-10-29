@@ -1,9 +1,6 @@
 require(ggplot2)
 require(RColorBrewer)
 
-
-
-
 #' Recommend that this not be used directly. segmentRawData generates these plots as part of the method.
 .plotSegmentedGenome<-function(fitted, segmented,window.depths.std,probes.min=NULL) {
   require(ggplot2)
@@ -123,3 +120,126 @@ showModelPredictions<-function(type='P') {
   }
   return(p)
 }
+
+#' @name patientRiskTilesPlot
+#' @param type BarrettsRiskRx object
+#' @return ggplot object
+#'
+#' @author skillcoyne
+#' @export
+patientRiskTilesPlot<-function(brr, sample.info=NULL) {
+  if (length(which(class(brr) %in% c('BarrettsRiskRx'))) <= 0)
+    stop("BarrettsRiskRx required")
+
+  preds = predictions(brr)
+  if (!is.null(sample.info)) {
+    preds = .setUpRxTable(sample.info, predictions(brr))
+  } else {
+    preds$Endoscopy = 1:nrow(preds)
+    preds$GEJ.Distance = 1
+  }
+
+  preds$GEJ.Distance = factor(preds$GEJ.Distance, ordered=T)
+  preds$Endoscopy = factor(preds$Endoscopy, ordered=T)
+  
+  p = ggplot(preds, aes(Endoscopy, GEJ.Distance)) +
+    geom_tile(aes(fill=Risk), color='white') + scale_fill_manual(values=riskColors(), limits=names(riskColors())) +
+    labs(x='Endoscopy',y='Esophageal Location (GEJ...)')
+
+  if ('Pathology' %in% colnames(preds)) {
+    p = p + geom_point(aes(shape=Pathology), fill='white', color='white', size=8) + 
+        scale_shape_manual(values=c(1,0,15,24,25), limits=c('NDBE','ID','LGD','HGD','IMC'), labels=c('NDBE','ID','LGD','HGD','IMC'), guide=guide_legend(override.aes=list(fill='white', color='white')))
+    }
+  
+  p + theme_minimal() + theme(legend.key=element_rect(fill='grey39'), panel.background=element_rect(colour = 'black'), panel.grid.major=element_blank(), panel.spacing = unit(0.2, 'lines'), panel.border = element_rect(color="black", fill=NA, size=0.5)  ) 
+}
+
+
+#' Windowed, scaled CN values across the genome
+#' @name copyNumberMountainPlot
+#' @param type BarrettsRiskRx object
+#' @param annotate If true, only segments in the non-zero coefficients are highlighted (DEF=T)
+#' @return list of ggplot objects per sample
+#'
+#' @author skillcoyne
+#' @export
+copyNumberMountainPlot<-function(brr,annotate=T) {
+  if (length(which(class(brr) %in% c('BarrettsRiskRx'))) <= 0)
+    stop("BarrettsRiskRx required")
+  
+  pal = c('#238B45', 'grey','#6A51A3')
+  chr.info = chrInfo()
+  
+  samples = rownames(brr$tiles)
+  locs = get.loc(brr$tiles[,-ncol(brr$tiles)])
+
+  cvdf = bind_cols(get.loc(t(coef_cv_RR)),as_tibble(coef_cv_RR))
+  
+  
+  plist = list()
+  for (sample in samples) {
+    tb = as_tibble( matrix(t(brr$tiles[sample,-ncol(brr$tiles)]), ncol=1) )
+    colnames(tb) = sample
+  
+    df = bind_cols(locs, tb)
+
+    melted = as_tibble(reshape2::melt(id.vars=c('chr','start','end'),df))
+    melted = as_tibble(left_join(left_join(melted,chr.info[,c('chr','chr.length')],by='chr'),cvdf, by=c('chr','start','end')))
+
+    arms = melted %>% filter(end-start > median(melted$end-melted$start)*2)
+    segs = melted %>% filter(end-start <= median(melted$end-melted$start)*2)
+    
+    cn<-function(value,range) {
+      x = 'norm'
+      if (value < range[1]) {
+        x = 'loss' 
+      } else if (value > range[2]) {
+        x = 'gain'
+      }
+      return(x)
+    }
+  
+    segs = segs %>% rowwise() %>% dplyr::mutate( 
+      'CN'=cn(value,c(-1,1)),
+      'annotate'=ifelse(!is.na(coef),cn(value,c(0,0)),'norm')
+    )
+    segs$CN = factor(segs$CN, levels = c('loss','norm','gain'))
+    segs$annotate = factor(segs$annotate, levels = c('loss','norm','gain'))
+
+    arms = arms %>% rowwise() %>% dplyr::mutate( 
+      'CN'=cn(value,c(-1,1)),
+      'annotate'=ifelse(!is.na(coef),cn(value,c(0,0)),'norm')
+    ) %>% filter(!is.na(coef))
+    arms$CN = factor(arms$CN, levels = c('loss','norm','gain'))
+    arms$annotate = factor(arms$annotate, levels = c('loss','norm','gain'))
+    
+      
+    p = ggplot(segs, aes(x=chr.length)) + facet_grid(~chr, scales='free_x', space='free_x') + 
+      scale_fill_manual(values=pal, limits=c('loss','norm','gain'), labels=c('Loss','Normal','Gain'), name='')
+    
+    if (!annotate) {
+      p = p + geom_rect(aes(xmin=start,xmax=end,ymin=0, ymax=value, fill=CN)) + geom_rect(aes(xmin=1,xmax=chr.length,ymin=-1,ymax=1),fill='grey88',alpha=0.03)
+    } else {
+      p = p + geom_rect(aes(xmin=start,xmax=end,ymin=0,ymax=value, fill=annotate)) + 
+        geom_rect(data=arms,aes(xmin=start,xmax=end,ymin=0,ymax=value,fill=annotate),alpha=0.5)
+    }
+    p = p + labs(x='Chromosomes', y='Relative CN',title=sample) +
+      theme_bw() + theme(axis.text.x=element_blank(), panel.spacing.x=unit(0,'lines'), panel.grid=element_blank(), panel.border=element_rect(linetype='solid', color='grey39', fill=NA), legend.position = 'bottom' )
+    
+    legend = .get.legend(p)
+    
+    plist[[sample]] = p + theme(legend.position = 'none')
+  }
+  return(list('plots'=plist, 'legend'=legend))
+}
+
+
+.get.legend<-function(a.gplot){
+  tmp <- ggplot_gtable(ggplot_build(a.gplot))
+  leg <- which(sapply(tmp$grobs, function(x) x$name) == "guide-box")
+  legend <- tmp$grobs[[leg]]
+  return(legend)
+}
+
+
+

@@ -22,7 +22,9 @@ Imports:
   grid,
   ggrepel,
   gtable,
+  RColorBrewer,
   knitr,
   rmarkdown,
   kableExtra
 RoxygenNote: 6.1.0
+Suggests: testthat

@@ -5,10 +5,10 @@
 \title{Times per sample are determined by the order of the sample as given by the demoFile, or by the order of the samples in the dataset.
 TODO This function presume that each sample is an independent timepoint. As multiple samples are typically collected per timepoint I need to allow the user to indicate that somehow and account for that in the recommendation using the maximum risk.}
 \usage{
-rx(brr, demoFile = NULL)
+rx(brr, sample.info = NULL)
 }
 \arguments{
-\item{demoFile}{for the tab-delimited file that contains a per-sample entry for p53 IHC, Barrett's segment length, patient gender OPTIONAL}
+\item{sample.info}{Data frame from the 'loadSampleInformation()' function that contains a per-sample entry}
 
 \item{BarrettsRiskRx}{object REQ}
 }

@@ -80,6 +80,35 @@ runQDNAseq<-function(bamPath, outputPath) {
 }
 
 
+
+#' @name loadSampleInformation
+#' @param sample.file
+#' @param clin.file
+#' @return 
+#'
+#' @author skillcoyne
+#' @export
+loadSampleInformation<-function(sample.file, clin.file) {
+  sample.info = .readFile(sample.file)
+  clin.info = .readFile(clin.file, col_types=list(col_character(),col_character(), col_integer()))
+
+  if (!'Sample' %in% colnames(sample.info))
+    stop("Sample information file requires a column titled 'Sample'")
+
+  if (!'Sample' %in% colnames(clin.info))
+    stop("Clinical information file requires a column titled 'Sample'")
+  
+  if (nrow(sample.info) != nrow(clin.info) || length(setdiff(sample.info$Sample, clin.info$Sample)) > 0) {
+    diff = paste( setdiff(clin.info$Sample, sample.info$Sample), collapse=', ')
+    warning(paste("Samples listed in files do not match, missing information on:", diff))
+  }
+  info = left_join(sample.info, clin.info, by='Sample')
+  
+  return(info)
+}
+
+
+
 #' Subtract arm-level values from smaller tile sizes. Used only if tileSegments has been run more than once with 'arms' as one tile size.
 #' @name subtractArms
 #' @param segments Matrix from tileSegments
@@ -89,13 +118,6 @@ runQDNAseq<-function(bamPath, outputPath) {
 #' @author skillcoyne
 #' @export
 subtractArms<-function(segments, arms) {
-  get.loc<-function(df) {
-    locs = do.call(rbind.data.frame, lapply(colnames(df), function(x) unlist(strsplit( x, ':|-'))))
-    colnames(locs) = c('chr','start','end')
-    locs[c('start','end')] = lapply(locs[c('start','end')], function(x) as.numeric(as.character(x)))
-    locs$chr = factor(locs$chr, levels=c(1:22), ordered=T)
-    locs
-  }
 
   if (is.null(segments) | is.null(arms))
     stop("Two matrices required")
@@ -119,11 +141,6 @@ subtractArms<-function(segments, arms) {
     }
   }
   mergedDf = cbind(tmp, arms)
-  #head(mergedDf)
-  #summary(mergedDf[,1])
-
-  #plot(apply(segs,2,mean))
-  #plot(apply(mergedDf, 2, mean))
   return(mergedDf)
 }
 
@@ -132,7 +149,7 @@ subtractArms<-function(segments, arms) {
 #' @name segmentRawData
 #' @param raw.data Data frame of raw read counts
 #' @param fit.data Data frame of fitted read values 
-#' @param blacklist DEF qDNAseq_blacklistedRegions
+#' @param blacklist qDNAseq_blacklistedRegions (defaults to file provided in package)
 #' @param min.probes minimum number of probes per segment DEF=67  (~1Mb)
 #' @param gamma2 gamma adjustment for pcf DEF=250
 #' @param cutoff is the residual value cutoff for QC DEF=0.015
@@ -142,10 +159,17 @@ subtractArms<-function(segments, arms) {
 #'
 #' @author skillcoyne
 #' @export
-segmentRawData<-function(raw.data, fit.data, blacklist=read.table(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), header=T, sep='\t'), min.probes=67, gamma2=250, cutoff=0.015, logTransform=F, cache.dir=getcachedir(), build='hg19', verbose=T) {
+segmentRawData<-function(raw.data, fit.data, blacklist=NULL, min.probes=67, gamma2=250, cutoff=0.015, logTransform=F, cache.dir=getcachedir(), build='hg19', verbose=T) {
+
+  if (is.null(blacklist) | !is.data.frame(blacklist)) 
+    blacklist = readr::read_tsv(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), col_names=T)
+  
+  if (!is.null(sample.info))
+  
+
   if (is.character(raw.data) & is.character(fit.data)) {
-    raw.data = as.data.frame(data.table::fread(raw.data))
-    fit.data = as.data.frame(data.table::fread(fit.data))
+    raw.data = readr::read_tsv(raw.data, col_names=T, col_types = cols('chrom'=col_character()))
+    fit.data = readr::read_tsv(fit.data, col_names=T, col_type = cols('chrom'=col_character()))
   } else if (is.data.frame(fit.data)) {
     raw.data = as.data.frame(raw.data)
     fit.data = as.data.frame(fit.data)
@@ -402,6 +426,7 @@ tileSegments<-function(swgsObj, size=5e6, build='hg19', verbose=T) {
   return(tiles)
 }
 
+# Calculate the residuals per segment between the fitted values from QDNAseq, and the segments post-pcf
 # DISTANCE between segment and points, then variance across the distances...
 .calculateSegmentResiduals<-function(calcSegments, observedCN, verbose=T) {
   if (verbose) message("Calculating variance of residuals per segment")

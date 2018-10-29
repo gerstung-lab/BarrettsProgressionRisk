@@ -2,6 +2,8 @@
 
 export(absoluteRiskCI)
 export(adjustRisk)
+export(copyNumberMountainPlot)
+export(loadSampleInformation)
 export(plotCorrectedCoverage)
 export(plotSegmentData)
 export(predictRisk)

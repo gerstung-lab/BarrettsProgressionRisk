@@ -63,7 +63,7 @@ chrInfo<-function(chrs =  c(1:22, 'X','Y'), prefix='chr', build='hg19', file=NUL
   }
   chr.lengths$chr = factor(chr.lengths$chr, levels=chrs, ordered = T)
 
-  return(chr.lengths)
+  return(as_tibble(chr.lengths))
 }
 
 
@@ -147,6 +147,21 @@ medianFilter <- function(x,k){
 }
 
 
+get.loc<-function(df) {
+  locs = do.call(rbind.data.frame, lapply(colnames(df), function(x) unlist(strsplit( x, ':|-'))))
+  colnames(locs) = c('chr','start','end')
+  locs[c('start','end')] = lapply(locs[c('start','end')], function(x) as.numeric(as.character(x)))
+  locs$chr = factor(locs$chr, levels=c(1:22,'X','Y'), ordered=T)
+  as_tibble(locs)
+}
+
+
+
+
+non.zero.coef<-function() {
+  cf = as.matrix(coef(fitV, lambda))
+  cf[cf!=0,]
+}
 
 ## Not used currently...
 .mergeCountFiles<-function(path='.', raw.grep='raw.*read', corr.grep='corr|fitted', build='hg19', verbose=T) {
