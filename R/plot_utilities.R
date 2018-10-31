@@ -127,31 +127,46 @@ showModelPredictions<-function(type='P') {
 #'
 #' @author skillcoyne
 #' @export
-patientRiskTilesPlot<-function(brr, sample.info=NULL) {
+patientRiskTilesPlot<-function(brr) {
   if (length(which(class(brr) %in% c('BarrettsRiskRx'))) <= 0)
     stop("BarrettsRiskRx required")
 
-  preds = predictions(brr)
-  if (!is.null(sample.info)) {
-    preds = .setUpRxTable(sample.info, predictions(brr))
-  } else {
-    preds$Endoscopy = 1:nrow(preds)
-    preds$GEJ.Distance = 1
-  }
-
+  preds = brr$per.sample
   preds$GEJ.Distance = factor(preds$GEJ.Distance, ordered=T)
   preds$Endoscopy = factor(preds$Endoscopy, ordered=T)
   
   p = ggplot(preds, aes(Endoscopy, GEJ.Distance)) +
     geom_tile(aes(fill=Risk), color='white') + scale_fill_manual(values=riskColors(), limits=names(riskColors())) +
-    labs(x='Endoscopy',y='Esophageal Location (GEJ...)')
+    labs(x='Endoscopy Date',y='Esophageal Location (GEJ...)')
 
   if ('Pathology' %in% colnames(preds)) {
     p = p + geom_point(aes(shape=Pathology), fill='white', color='white', size=8) + 
         scale_shape_manual(values=c(1,0,15,24,25), limits=c('NDBE','ID','LGD','HGD','IMC'), labels=c('NDBE','ID','LGD','HGD','IMC'), guide=guide_legend(override.aes=list(fill='white', color='white')))
     }
   
-  p + theme_minimal() + theme(legend.key=element_rect(fill='grey39'), panel.background=element_rect(colour = 'black'), panel.grid.major=element_blank(), panel.spacing = unit(0.2, 'lines'), panel.border = element_rect(color="black", fill=NA, size=0.5)  ) 
+  p + theme_minimal() + theme(legend.key=element_rect(fill='grey39'), panel.background=element_rect(colour = 'black'), panel.grid.major=element_blank(), panel.spacing = unit(0.2, 'lines'), panel.border = element_rect(color="black", fill=NA, size=0.5), legend.position = 'bottom'  ) 
+}
+
+
+#' @name patientEndoscopyPlot
+#' @param type BarrettsRiskRx object
+#' @return ggplot object
+#'
+#' @author skillcoyne
+#' @export
+patientEndoscopyPlot<-function(brr) {
+  if (length(which(class(brr) %in% c('BarrettsRiskRx'))) <= 0)
+    stop("BarrettsRiskRx required")
+  
+  preds = absoluteRiskCI(brr)
+  preds = preds %>% rowwise() %>% dplyr::mutate( img=printRisk(Probability*100,CI.low*100,CI.high*100,Risk) )
+  
+  preds$Endoscopy = as.Date(preds$Endoscopy)
+  
+  ggplot(preds, aes(Endoscopy, Probability)) + ylim(0,1) +
+    geom_line(color='grey') + geom_errorbar(aes(ymin=CI.low,ymax=CI.high, color=Risk), width=5, show.legend=F) + geom_point(aes(color=Risk), size=5) + 
+    scale_color_manual(values=riskColors(), limits=names(riskColors())) + labs(y='Absolute Risk', x='Endoscopy Date',title='Absolute risks over time') + theme_bw() + theme(legend.position='bottom')
+  
 }
 
 
@@ -163,12 +178,27 @@ patientRiskTilesPlot<-function(brr, sample.info=NULL) {
 #'
 #' @author skillcoyne
 #' @export
-copyNumberMountainPlot<-function(brr,annotate=T) {
+copyNumberMountainPlot<-function(brr,annotate=T, legend=T) {
   if (length(which(class(brr) %in% c('BarrettsRiskRx'))) <= 0)
     stop("BarrettsRiskRx required")
   
+  mp = .mountainPlots(brr,annotate)
+  
+  ht = length(mp$plot.list)*2
+  
+  p = do.call(gridExtra::arrangeGrob, (mp$plot.list))
+  
+  if (legend)
+    gridExtra::grid.arrange(p,gridExtra::arrangeGrob(mp$legend), heights=c(ht = length(mp$plot.list)*2,1), ncol=1)
+  else
+    gridExtra::grid.arrange(p, ncol=1)
+}
+
+
+
+.mountainPlots<-function(brr,annotate=T) {
   pal = c('#238B45', 'grey','#6A51A3')
-  chr.info = chrInfo()
+  chr.info = chrInfo(build=pr$segmented$chr.build.info)
   
   samples = rownames(brr$tiles)
   locs = get.loc(brr$tiles[,-ncol(brr$tiles)])
@@ -214,23 +244,27 @@ copyNumberMountainPlot<-function(brr,annotate=T) {
     arms$annotate = factor(arms$annotate, levels = c('loss','norm','gain'))
     
       
-    p = ggplot(segs, aes(x=chr.length)) + facet_grid(~chr, scales='free_x', space='free_x') + 
-      scale_fill_manual(values=pal, limits=c('loss','norm','gain'), labels=c('Loss','Normal','Gain'), name='')
+    p = ggplot(segs, aes(x=chr.length)) + facet_grid(~chr, scales='free_x', space='free_x') 
+      
     
     if (!annotate) {
-      p = p + geom_rect(aes(xmin=start,xmax=end,ymin=0, ymax=value, fill=CN)) + geom_rect(aes(xmin=1,xmax=chr.length,ymin=-1,ymax=1),fill='grey88',alpha=0.03)
+      p = p + geom_rect(aes(xmin=1,xmax=chr.length,ymin=-1,ymax=1),fill='grey88',alpha=0.03) + geom_rect(aes(xmin=start,xmax=end,ymin=0, ymax=value, fill=CN)) + 
+        scale_fill_manual(values=pal, limits=c('loss','norm','gain'), labels=c('Loss','Normal','Gain'), name='Relative CNA')
     } else {
       p = p + geom_rect(aes(xmin=start,xmax=end,ymin=0,ymax=value, fill=annotate)) + 
-        geom_rect(data=arms,aes(xmin=start,xmax=end,ymin=0,ymax=value,fill=annotate),alpha=0.5)
+        geom_rect(data=arms,aes(xmin=start,xmax=end,ymin=0,ymax=value,fill=annotate),alpha=0.5) +
+        scale_fill_manual(values=pal, limits=c('loss','norm','gain'), labels=c('Loss','Normal','Gain'), name='Model Features')
     }
-    p = p + labs(x='Chromosomes', y='Relative CN',title=sample) +
-      theme_bw() + theme(axis.text.x=element_blank(), panel.spacing.x=unit(0,'lines'), panel.grid=element_blank(), panel.border=element_rect(linetype='solid', color='grey39', fill=NA), legend.position = 'bottom' )
+    p = p + labs(x='Chromosomes', y='Relative CNA',title=sample) +
+      theme_bw() + theme(axis.text.x=element_blank(), panel.spacing.x=unit(0,'lines'), panel.grid=element_blank(), panel.border=element_rect(linetype='solid', color='grey39', fill=NA), legend.position = 'bottom' ) 
     
     legend = .get.legend(p)
     
     plist[[sample]] = p + theme(legend.position = 'none')
   }
-  return(list('plots'=plist, 'legend'=legend))
+  legend = gridExtra::arrangeGrob(legend)
+  
+  return(list('plot.list'=plist, 'legend'=legend))
 }
 
 

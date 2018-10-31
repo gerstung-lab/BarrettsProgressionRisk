@@ -4,7 +4,7 @@
 \alias{absoluteRiskCI}
 \title{Calculate upper and lower boudaries for the absolute risk (probabilities) provided by predictRisk}
 \usage{
-absoluteRiskCI(psp)
+absoluteRiskCI(psp, by = c("endoscopy", "sample"), verbose = T)
 }
 \arguments{
 \item{BarrettsRiskRx}{object}

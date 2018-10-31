@@ -21,6 +21,7 @@ pi.hat<-function(x) exp(x)/(1+exp(x))
 
 #' Main method that should be called to use the trained model.
 #' @name predictRisk
+#' @info SampleInformation object
 #' @param path where QDNAseq raw and corrected read files are REQ
 #' @param raw.file.grep for the filename of the raw reads file, default is 'raw.*read'
 #' @param corrected.file.grep for the filename of the corrected reads file, default is 'corr|fitted'
@@ -28,7 +29,9 @@ pi.hat<-function(x) exp(x)/(1+exp(x))
 #'
 #' @author skillcoyne
 #' @export
-predictRisk<-function(path='.', raw.file.grep='raw.*read', corrected.file.grep='corr|fitted', cache.dir=NULL, verbose=T) {
+predictRisk<-function(info, path='.', raw.file.grep='raw.*read', corrected.file.grep='corr|fitted', cache.dir=NULL, verbose=T) {
+  if (!'SampleInformation' %in% class(info)) 
+    stop("SampleInformation object from loadSampleInformation(...) required.")
 
   if (is.null(cache.dir))
     cache.dir = getcachedir()
@@ -69,7 +72,7 @@ predictRisk<-function(path='.', raw.file.grep='raw.*read', corrected.file.grep='
 
   if (verbose) message(paste(length(sampleCols), "sample(s) loaded from",rawFile))
 
-  segmented = segmentRawData(raw.data,fit.data,cache.dir=cache.dir,verbose=verbose)
+  segmented = segmentRawData(info, raw.data,fit.data,cache.dir=cache.dir,verbose=verbose)
   psp = predictRiskFromSegments(segmented, verbose=verbose)
   
   return(psp)
@@ -86,6 +89,7 @@ predictRiskFromSegments<-function(swgsObj, verbose=T) {
   if (class(swgsObj)[1] != 'SegmentedSWGS')
     stop("SegmentedSWGS object missing")
   
+    # Tile, scale, then merge segmented values into 5Mb and arm-length windows across the genome.
     mergedDf = tryCatch({
       segtiles = tileSegments(swgsObj, size=5e6,verbose=verbose)
       for (i in 1:ncol(segtiles$tiles))
@@ -101,17 +105,20 @@ predictRiskFromSegments<-function(swgsObj, verbose=T) {
       cbind(mergedDf, 'cx'=cx.score)
   }, error = function(e) {
     msg = paste("ERROR tiling segmented data:", e)
-    print(msg)
+    stop(msg)
   })
   
   sparsed_test_data = Matrix(data=0, nrow=nrow(mergedDf),  ncol=ncol(mergedDf),
                              dimnames=list(rownames(mergedDf),colnames(mergedDf)), sparse=T)
   for(i in colnames(mergedDf)) sparsed_test_data[,i] = mergedDf[,i]
   
+  # get the bootstrap errors for coefficients
   coef.error = .bootstrap.coef.stderr()
   
+  # Errors are the per window, weighted mean error of all segments in the bin
   Xerr = cbind(segtiles$error, armtiles$error)
   Xerr_diag = apply(Xerr, 1, function(x) { diag(as.matrix(x^2)) })
+  
   # Not sure aobut this step...
   covB = cov(coef.error[,'jack.se',drop=F])[1]
   X = t(mergedDf[,coef.error$coef])
@@ -119,15 +126,24 @@ predictRiskFromSegments<-function(swgsObj, verbose=T) {
   
   Var_rr = apply(X,2,function(x) sum(x*covB*x))+sapply(Xerr_diag, function(x) sum(B*x*B))
   perSampleError = sqrt( Var_rr )
-
+  perSampleError = tibble('Sample'=names(perSampleError),'Error'=perSampleError)
+  
+  perSampleError = left_join(perSampleError, swgsObj$sample.info, by='Sample') %>% select('Sample','Error','Endoscopy')
+  
+  # Predict and generate absolute probabilities
   RR = predict(fitV, newx=sparsed_test_data, s=lambda, type='link')
   probs = pi.hat(RR)
   
-  preds = tibble('Sample'=rownames(probs), 'Probability'=round(probs[,1],2), 
-                 'Relative Risk'=RR[,1], 
-                 'Risk'=sapply(probs[,1], .risk))
+  per.sample.preds = full_join(tibble('Sample'=rownames(probs), 
+                                      'Probability'=round(probs[,1],2), 
+                                      'Relative Risk'=RR[,1],
+                                      'Risk'=sapply(probs[,1], .risk)), swgsObj$sample.info, by='Sample')
   
-  psp = list('predictions'=preds, 'segmented'=swgsObj, 'per.sample.error'=perSampleError, 'tiles'=mergedDf)
+  per.endo.preds = .setUpRxTablePerEndo(per.sample.preds, 'max', verbose) %>% rowwise() %>% mutate( Risk=.risk(Probability))
+  perEndoError = .setUpRxTablePerEndo( perSampleError, 'max', F) %>% select('Endoscopy','Error')
+  
+  # TODO There's a better way to do R objects...
+  psp = list('per.endo'=per.endo.preds, 'per.sample'=per.sample.preds, 'segmented'=swgsObj, 'per.sample.error'=perSampleError, 'per.endo.error'=perEndoError, 'tiles'=mergedDf)
   class(psp) <- c('BarrettsRiskRx', class(psp))
   return(psp)
 }
@@ -138,17 +154,27 @@ predictRiskFromSegments<-function(swgsObj, verbose=T) {
 #' @return Data frame of per-sample low and high absolute risk with risk categories applied
 #' @author skillcoyne
 #' @export
-absoluteRiskCI<-function(psp) {
+absoluteRiskCI<-function(psp, by=c('endoscopy','sample'), verbose=T) {
   if (length(which(class(psp) %in% c('BarrettsRiskRx'))) <= 0)
     stop("BarrettsRiskRx object required")
+  riskBy = .titleCase(match.arg(by))
   
-  low = round(pi.hat(psp$predictions$`Relative Risk`-psp$per.sample.error),2)
-  high = round(pi.hat(psp$predictions$`Relative Risk`+psp$per.sample.error),2)
-  preds = tibble('Sample'=psp$predictions$Sample, 
-                 'CI.low'=low,
-                 'Risk.low'=sapply(low, .risk),
-                 'CI.high'=high,
-                 'Risk.high'=sapply(high, .risk))
+  if (verbose)
+    message(paste('Predictions, risks, and CI per',tolower(riskBy)))
+
+  preds = switch(riskBy,
+                 'Sample'=full_join(psp$per.sample, psp$per.sample.error, by=c('Sample','Endoscopy')),
+                 'Endoscopy'=full_join(psp$per.endo, psp$per.endo.error, by='Endoscopy'))
+  
+  low = round(pi.hat(preds$`Relative Risk`-preds$Error),2)
+  high = round(pi.hat(preds$`Relative Risk`+preds$Error),2)
+  
+  preds = add_column(preds, 
+              'CI.low'=low,
+             'Risk.low'=sapply(low, .risk),
+             'CI.high'=high,
+             'Risk.high'=sapply(high, .risk))
+  
   return(preds)
 }
 
@@ -159,15 +185,24 @@ absoluteRiskCI<-function(psp) {
 #'
 #' @author skillcoyne
 #' @export
-relativeRiskCI<-function(psp) {
+relativeRiskCI<-function(psp, by=c('endoscopy','sample'), verbose=T) {
   if (length(which(class(psp) %in% c('BarrettsRiskRx'))) <= 0)
     stop("BarrettsRiskRx object required")
+  riskBy = .titleCase(match.arg(by))
   
-  low = (psp$predictions$`Relative Risk`-psp$per.sample.error)
-  high = (psp$predictions$`Relative Risk`+psp$per.sample.error)
-  preds = tibble('Sample'=rownames(probs), 
-                 'CI.RR.low'=low,
-                 'CI.RR.high'=high)
+  if (verbose)
+    message(paste('Predictions, relative risks, and CI per',tolower(riskBy)))
+  
+  preds = full_join(psp$per.endo, psp$per.endo.error, by='Endoscopy')
+  if (riskBy == 'Sample') 
+    preds = full_join(psp$per.sample, psp$per.sample.error, by='Sample')
+
+  low = (preds$`Relative Risk`-preds$Error)
+  high = (preds$`Relative Risk`+preds$Error)
+  
+  preds = add_column(preds, 'CI.RR.low'=low,
+                     'CI.RR.high'=high)
+
   return(preds)
 }
 
@@ -224,15 +259,18 @@ segmentedValues<-function(brr, passQC=T) {
 
 
 
-#' Use with caution. These are based on estimates of what we think the risk might really be #' and adjusting the resulting risk based on those estimates.
+#' Use with caution! These are based on estimates of what we think the risk might really be and adjusting the resulting risk based on those estimates.
 #' @name adjustRisk
 #' @param BarrettsRiskRx object
 #' @param offset c(min,mean,max)
-#' @return BarrettsRiskRx object with adjusted predictions and recommentations.
+#' @return list with adjusted predictions and recommentations.
 #'
 #' @author skillcoyne
 #' @export
-adjustRisk <- function(brr, offset=c('min','mean','max')) {
+adjustRisk <- function(brr, offset=c('mean','max','min'), by=c('endoscopy','sample')) {
+  offset = match.arg(offset)
+  riskBy = .titleCase(match.arg(by)) 
+    
   if (class(brr)[1] != 'BarrettsRiskRx')
     stop("BarrettsRiskRx object missing")
 
@@ -251,17 +289,21 @@ adjustRisk <- function(brr, offset=c('min','mean','max')) {
          max=log(cases/mx),
          mean=log(cases/m))
 
-  RR = brr$predictions$`Relative Risk`
+  preds = switch(riskBy,
+                 'Endoscopy'=brr$per.endo,
+                 'Sample'=brr$per.sample)
+                   
+  RR = preds$`Relative Risk`
 
-  adjustedRiskRx = brr$predictions
+  adjustedRiskRx = preds
 
   adjustedRiskRx$Probability = 1/(1+exp(-RR+abs(offset)))
   adjustedRiskRx$`Relative Risk` = RR+offset
   adjustedRiskRx$Risk = sapply(adjustedRiskRx$Probability, .risk)
 
-  psp = list('predictions'=adjustedRiskRx)
-  class(psp) <- c('BarrettsRiskRx', class(psp))
-  return(psp)
+  recommendations = .apply.rules(adjustedRiskRx,riskBy)
+  
+  return(list('adj.predictions'=adjustedRiskRx, 'adj.recommendations'=recommendations))
 }
 
 #' Get predictions from the model
@@ -274,7 +316,7 @@ adjustRisk <- function(brr, offset=c('min','mean','max')) {
 predictions<-function(brr) {
   if (class(brr)[1] != 'BarrettsRiskRx')
     stop("BarrettsRiskRx object missing")
-  brr$predictions
+  brr$per.endo
 }
 
 #' Times per sample are determined by the order of the sample as given by the demoFile, or by the order of the samples in the dataset.
@@ -286,48 +328,55 @@ predictions<-function(brr) {
 #'
 #' @author skillcoyne
 #' @export
-rx<-function(brr, sample.info=NULL) {
+rx<-function(brr, by=c('endoscopy','sample')) {
   if (class(brr)[1] != 'BarrettsRiskRx')
     stop("BarrettsRiskRx object required")
 
-  pR = brr$predictions
+  riskBy = .titleCase(match.arg(by))
 
-  if (!is.null(sample.info)) 
-    pR = .setUpRxTable(sample.info, pR)
+  preds = switch(riskBy,
+                 'Endoscopy'=brr$per.endo,
+                 'Sample'=brr$per.sample)
+
+  rules = .apply.rules(preds,riskBy)
+
+  return(rules)
+}
+
+.apply.rules<-function(preds,riskBy) {
+  preds = preds %>% rowwise() %>% dplyr::mutate(Risk = .risk(Probability))
+  preds$Risk = factor(preds$Risk, levels=c('Low','Moderate','High'), ordered=T)
   
-  ## TODO check endoscopy number, get max prediction per endo? etc
+  p53Col = grep('p53', colnames(preds), value=T, ignore.case=T)
+  pathCol = grep('path', colnames(preds), value=T, ignore.case=T)
   
-
-  pR$Risk = factor(pR$Risk, levels=c('Low','Moderate','High'), ordered=T)
-  pR$Sample = as.character(pR$Sample)
-  p53Col = grep('p53', colnames(pR), value=T, ignore.case=T)
-  pathCol = grep('path', colnames(pR), value=T, ignore.case=T)
-
-  rules = as.data.frame(matrix(ncol=3, nrow=nrow(pR)-1, dimnames=list(c(), c('Time 1','Time 2','rule'))))
-  # Consecutive
-  for (i in 1:(nrow(pR)-1)) {
-    risks = table(pR$Risk[i:(i+1)])
+  # Consecutive after sorting by the selected column
+  preds = preds %>% arrange(preds[[riskBy]])
+  
+  rules = as_tibble(matrix(ncol=3, nrow=0, dimnames=list(c(), c('Time 1','Time 2','Rule'))))
+  for (i in 1:(nrow(preds)-1)) {
+    risks = table(preds$Risk[i:(i+1)])
     p53 = NULL
     if (length(p53Col) > 0) {
-      pR[[p53Col]] = factor(pR[[p53Col]], levels=c(0,1))
-      p53 = table(pR[[p53Col]][i:(i+1)])
+      preds[[p53Col]] = factor(preds[[p53Col]], levels=c(0,1))
+      p53 = table(preds[[p53Col]][i:(i+1)])
     }
-
+    
     rule = 'None'
-    if ( risks['High'] == 2 || (length(pathCol) > 0 && length(which(grepl('HGD|IMC', pR[[pathCol]][i:(i+1)]))) > 0) ) {
+    if ( risks['High'] == 2 || (length(pathCol) > 0 && length(which(grepl('HGD|IMC', preds[[pathCol]][i:(i+1)]))) > 0) ) {
       rule = 1
     } else if ( risks['High'] == 1 || (!is.null(p53) && p53['1'] > 0) ) {
       rule = 2
-    } else if ( risks['Moderate'] > 0 || (risks['Low'] ==1 && nrow(pR) == 1)) {
+    } else if ( risks['Moderate'] > 0 || (risks['Low'] ==1 && nrow(preds) == 1)) {
       rule = 3
     } else if ( risks['Low'] == 2 ) {
       rule = 4
     }
-    rules[i,] = cbind( pR$Sample[i], pR$Sample[(i+1)], as.integer(rule) )
+    
+    rules = add_row(rules, 'Time 1'=preds[[riskBy]][i], 'Time 2'=preds[[riskBy]][(i+1)], 'Rule'=as.integer(rule)  )
   }
-  rules$rule = as.integer(rules$rule)
-  rules$Rx = sapply(rules$rule, .rule.rx)
-
+  rules$Rx = sapply(rules$Rule, .rule.rx)
+  
   return(rules)
 }
 
@@ -345,7 +394,7 @@ rx<-function(brr, sample.info=NULL) {
 
 .readFile<-function(file, ...) {
   if ( tools::file_ext(file) %in% c('xlsx','xls') ) {
-    data = readxl::read_xlsx(file,1)
+    data = readxl::read_xlsx(file,1,...)
   } else {
     data = readr::read_tsv(file, col_names=T, trim_ws=T, ...)  
   }
@@ -353,13 +402,22 @@ rx<-function(brr, sample.info=NULL) {
 }
 
 # Loads a data file with per-sample information on pathology, p53 IHC, etc
-.setUpRxTable<-function(sample.info, predDf) {
+.setUpRxTablePerEndo<-function(predDf, func=c('max','mean'), verbose=T) {
+  func = match.arg(func)
+  if (verbose)
+    message(paste0("Evaluating the ",func," risk per endoscopy"))
+  
   if (nrow(sample.info) < nrow(predDf)) {
     warning(paste("Fewer samples in",file,"than in the data files. Ignoring demo data."))
     return(NULL)
   }
 
-  preds = left_join(predDf, sample.info, by='Sample')
-    
-  return(preds)
+  if (func == 'max') {
+    predDf = predDf %>% group_by(Endoscopy) %>% dplyr::mutate('n.samples'=length(Endoscopy),'Samples'=paste(Sample,collapse=',')) %>% dplyr::summarise_all('max') %>% select(-matches('^Sample$'))
+  } else {
+    predDf = full_join(predDf %>% group_by(Endoscopy) %>% dplyr::mutate('n.samples'=length(Endoscopy), 'Samples'=paste(Sample,collapse=',')) %>%  select( -matches('Sample|Prob|Relative')) %>% dplyr::summarise_all('max'),
+      predDf %>% select( matches('Endo|Prob|Relative')) %>% group_by(Endoscopy)  %>% dplyr::summarise_all('mean'), by='Endoscopy')
+  }
+
+  return(predDf)
 }

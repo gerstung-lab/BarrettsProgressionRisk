@@ -84,27 +84,36 @@ runQDNAseq<-function(bamPath, outputPath) {
 #' @name loadSampleInformation
 #' @param sample.file
 #' @param clin.file
-#' @return 
+#' @return SampleInformation object (annotated tibble)
 #'
 #' @author skillcoyne
 #' @export
-loadSampleInformation<-function(sample.file, clin.file) {
+loadSampleInformation<-function(sample.file) {
   sample.info = .readFile(sample.file)
-  clin.info = .readFile(clin.file, col_types=list(col_character(),col_character(), col_integer()))
 
-  if (!'Sample' %in% colnames(sample.info))
-    stop("Sample information file requires a column titled 'Sample'")
+  if (length(which(c('Sample','Endoscopy') %in% colnames(sample.info))) < 2)
+    stop("Sample information requires at least two columns: 'Sample' and 'Endoscopy'. Sample should be unique text identifying the sample (matching the samples in your data files), and 'Endoscopy' should be a date or integer value indicating the (descending) order in which the endoscopy was performed. Multiple samples may belong to a single endoscopy.")
 
-  if (!'Sample' %in% colnames(clin.info))
-    stop("Clinical information file requires a column titled 'Sample'")
+  colnames(sample.info) = .titleCase(colnames(sample.info))
   
-  if (nrow(sample.info) != nrow(clin.info) || length(setdiff(sample.info$Sample, clin.info$Sample)) > 0) {
-    diff = paste( setdiff(clin.info$Sample, sample.info$Sample), collapse=', ')
-    warning(paste("Samples listed in files do not match, missing information on:", diff))
-  }
-  info = left_join(sample.info, clin.info, by='Sample')
+  exp_cols = c('Pathology','GEJ.Distance', 'P53 IHC')
+  cols_found = sapply( exp_cols, function(x) x %in% colnames(sample.info) )
+    
+  if (length(which(!cols_found)) > 0)
+    warning(paste0('Missing expected columns from sample information: ',paste(names(which(!cols_found)), collapse=', '), ". Recommendations will be based on predicted risks and: ",paste(names(which(cols_found)), collapse=', ')) )
   
-  return(info)
+  sample.info$Endoscopy = factor(sample.info$Endoscopy, ordered=T)
+  
+  pathCol = grep('Pathology',colnames(sample.info))
+  if (length(pathCol) > 0) 
+    sample.info[[pathCol]] = factor(sample.info[[pathCol]], levels=c('NDBE','ID','LGD','HGD','IMC','OAC'), labels=c('NDBE','ID','LGD','HGD','IMC','OAC'), ordered=T)
+  
+  p53Col = grep('P53',colnames(sample.info))
+  if (length(p53Col) > 0) 
+    sample.info[[p53Col]] = factor(sample.info[[p53Col]], levels=c(0,1), labels=c('Normal','Aberrant'), ordered=T)
+
+  class(sample.info) <- c('SampleInformation', class(sample.info))
+  return(sample.info)
 }
 
 
@@ -147,8 +156,8 @@ subtractArms<-function(segments, arms) {
 #' This function runs the copynumber::pcf algorithm to segment the sWGS data.
 #' renamed from 'binSWGS'
 #' @name segmentRawData
-#' @param raw.data Data frame of raw read counts
-#' @param fit.data Data frame of fitted read values 
+#' @param raw.data Data frame of raw read counts (file name is also valid)
+#' @param fit.data Data frame of fitted read values (file name is also valid)
 #' @param blacklist qDNAseq_blacklistedRegions (defaults to file provided in package)
 #' @param min.probes minimum number of probes per segment DEF=67  (~1Mb)
 #' @param gamma2 gamma adjustment for pcf DEF=250
@@ -159,35 +168,41 @@ subtractArms<-function(segments, arms) {
 #'
 #' @author skillcoyne
 #' @export
-segmentRawData<-function(raw.data, fit.data, blacklist=NULL, min.probes=67, gamma2=250, cutoff=0.015, logTransform=F, cache.dir=getcachedir(), build='hg19', verbose=T) {
+segmentRawData<-function(info, raw.data, fit.data, blacklist=NULL, min.probes=67, gamma2=250, cutoff=0.015, logTransform=F, cache.dir=getcachedir(), build='hg19', verbose=T) {
+  if (!'SampleInformation' %in% class(info))
+    stop("SampleInformation object from loadSampleInformation(...) required")
 
   if (is.null(blacklist) | !is.data.frame(blacklist)) 
-    blacklist = readr::read_tsv(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), col_names=T)
-  
-  if (!is.null(sample.info))
-  
+    blacklist = readr::read_tsv(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), col_names=T, col_types=cols(col_character(), col_integer(), col_integer()))
 
   if (is.character(raw.data) & is.character(fit.data)) {
     raw.data = readr::read_tsv(raw.data, col_names=T, col_types = cols('chrom'=col_character()))
     fit.data = readr::read_tsv(fit.data, col_names=T, col_type = cols('chrom'=col_character()))
   } else if (is.data.frame(fit.data)) {
-    raw.data = as.data.frame(raw.data)
-    fit.data = as.data.frame(fit.data)
+    raw.data = as_tibble(raw.data)
+    fit.data = as_tibble(fit.data)
   } else {
     stop("raw and fit data must be provided as data frames with columns: location, chrom, start, end followed by sample column(s).")
   }
-    
+
   chr.info = chrInfo(build=build)
   
   chrCol = grep('chr',colnames(fit.data))
   startCol = grep('start',colnames(fit.data))
-  fit.data[,chrCol] = factor(fit.data[,chrCol], levels=levels(chr.info$chr))
-  raw.data[,chrCol] = factor(raw.data[,chrCol], levels=levels(chr.info$chr))
+  fit.data[[chrCol]] = factor(fit.data[[chrCol]], levels=levels(chr.info$chr), ordered=T)
+  raw.data[[chrCol]] = factor(raw.data[[chrCol]], levels=levels(chr.info$chr), ordered=T)
   
-  fit.data = fit.data[order(fit.data[,chrCol], fit.data[,startCol]),]
-  raw.data = raw.data[order(raw.data[,chrCol], raw.data[,startCol]),]
-  
+  fit.data = fit.data %>% dplyr::arrange(fit.data[[chrCol]], fit.data[[startCol]])
+  raw.data = raw.data %>% dplyr::arrange(raw.data[[chrCol]], raw.data[[startCol]])
+    
   countCols = grep('loc|feat|chr|start|end', colnames(fit.data), invert=T)
+
+  smps = intersect(info$Sample, colnames(fit.data)[countCols])
+  if (length(smps) != length(info$Sample)) {
+    warning(paste0("SampleInformation object and fit/raw data do not have the same samples. Using only samples from SampleInformation (n=", length(smps), ")."))
+    fit.data = fit.data[,c(grep('loc|feat|chr|start|end', colnames(fit.data),value=T), smps) ]
+    raw.data = raw.data[,c(grep('loc|feat|chr|start|end', colnames(raw.data),value=T), smps) ]
+  }
 
   prepped = .prepRawSWGS(raw.data,fit.data,blacklist,logTransform)
   data = prepped$data
@@ -198,12 +213,12 @@ segmentRawData<-function(raw.data, fit.data, blacklist=NULL, min.probes=67, gamm
 
   if (ncol(data) < 4) { # Single sample
       if (verbose) message(paste("Segmenting single sample gamma=",round(gamma2*sdev,2)))
-      res = pcf( data=data, gamma=gamma2*sdev, fast=F, verbose=verbose, return.est=F )
+      res = copynumber::pcf( data=data, gamma=gamma2*sdev, fast=F, verbose=verbose, return.est=F )
       colnames(res)[grep('mean', colnames(res))] = colnames(raw.data)[countCols]
       res$sampleID = NULL
   } else { # for most we have multiple samples
       message(paste("Segmenting", (ncol(data)-2), "samples gamma=",round(gamma2*sdev,2)))
-      res = multipcf( data=data, gamma=gamma2*sdev, fast=F, verbose=verbose, return.est=F )
+      res = copynumber::multipcf( data=data, gamma=gamma2*sdev, fast=F, verbose=verbose, return.est=F )
   }
   tmp.seg = tempfile("segments.",cache.dir,".Rdata")
   save.image(file=tmp.seg)
@@ -236,12 +251,7 @@ segmentRawData<-function(raw.data, fit.data, blacklist=NULL, min.probes=67, gamm
     plist[[colnames(res)[5+col]]] = p
   }
 
-  #psegMSE = .per.segment.mse(resids)
-  #mse = as_tibble(res[,c(1:5)])
-  #for (sample in names(psegMSE)) 
-  #  mse[[sample]] = psegMSE[[sample]]
-  
-
+  # Get mean(var(MAD(segments))) per sample
   pvr = .per.sample.residual.variance(resids)
   pvr$Pass = pvr$varMAD_median <= cutoff
   
@@ -252,8 +262,9 @@ segmentRawData<-function(raw.data, fit.data, blacklist=NULL, min.probes=67, gamm
   failedQC = res[,unique(c(1:5,grep(paste(qcsamples,collapse='|'), colnames(res), invert=T)) )]
   if (ncol(failedQC) <= 5) failedQC = NULL
 
+  # There's a better way to do objects/classes in R, need to spend some time with it
   swgsObj = list('seg.vals'=passedQC, 'residuals'=pvr, 'segment.residual.MSE'=resids, 'prepped.data'=data, 'seg.plots'=plist, 
-             'genome.coverage'=coverage, 'failedQC'=failedQC, 'temp.file'=tmp.seg, 'cv.plot' = prepped$cv.plot)
+             'genome.coverage'=coverage, 'failedQC'=failedQC, 'temp.file'=tmp.seg, 'cv.plot'=prepped$cv.plot, 'chr.build.info'=build, 'sample.info'=info)
   class(swgsObj) <- c('SegmentedSWGS', class(swgsObj))
   save(swgsObj, file=tmp.seg)
 
@@ -287,7 +298,7 @@ scoreCX <- function(df, MARGIN) {
 #'
 #' @author skillcoyne
 #' @export
-tileSegments<-function(swgsObj, size=5e6, build='hg19', verbose=T) {
+tileSegments<-function(swgsObj, size=5e6, verbose=T) {
   require(tibble)
   
   if (class(swgsObj)[1] != 'SegmentedSWGS')
@@ -311,10 +322,9 @@ tileSegments<-function(swgsObj, size=5e6, build='hg19', verbose=T) {
   endPos = grep('end',colnames(data),ignore.case=T,value=T)
 
   data = data[which(!data[[chrCol]] %in% c('X','Y')),]
-  #mse = mse[which(!mse[[chrCol]] %in% c('X','Y')),]
   x1 = data[,c(chrCol, startPos, endPos, colnames(data)[dataCols])]
 
-  tiles = .tile.genome(size, chrInfo(build=build), allosomes=length(which(grepl('X|Y', unique(data[[chrCol]])))) > 0)
+  tiles = .tile.genome(size, chrInfo(build=swgsObj$chr.build.info), allosomes=length(which(grepl('X|Y', unique(data[[chrCol]])))) > 0)
   gr = GenomicRanges::makeGRangesFromDataFrame(x1, keep.extra.columns=T, start.field=startPos, end.field=endPos  )
   #mseGR = GenomicRanges::makeGRangesFromDataFrame(mse[,c(chrCol,startPos,endPos,colnames(data)[dataCols])], keep.extra.columns=T, start.field=startPos, end.field=endPos  )
 
@@ -334,8 +344,7 @@ tileSegments<-function(swgsObj, size=5e6, build='hg19', verbose=T) {
       bin = currentChr[i]
 
       segments = gr[subjectHits(curov[queryHits(curov) == i])]
-      #segMSE = mseGR[subjectHits(curov[queryHits(curov) == i])]
-      
+
       weights = sapply(as(segments,'GRangesList'),function(r) width(pintersect(bin, r))/width(bin) )
       
       rows = with(mergedDf, which( chr==as.character(seqnames(bin)) & start == start(bin) & end == end(bin)))
@@ -446,19 +455,6 @@ tileSegments<-function(swgsObj, size=5e6, build='hg19', verbose=T) {
   return(resids)
 }
 
-
-# Calculated per-segment MSE
-# .per.segment.sd<-function(segment.residuals) {
-#   if (is.null(segment.residuals) | !is.list(segment.residuals)) {
-#     stop("List of segment residuals required")
-#   }
-# 
-#   lapply(segment.residuals, function(sample) {
-#     sapply(sample, function(segment) {
-#       mean(segment^2)
-#     })
-#   })
-# }
 
 # Calculate per-sample residual variance from the list generated in .calculateSegmentResiduals
 .per.sample.residual.variance<-function(segment.residuals) {

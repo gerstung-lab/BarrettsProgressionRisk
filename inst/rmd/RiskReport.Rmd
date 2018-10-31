@@ -26,16 +26,13 @@ knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
 path = params$path
 rawFile = grep('raw', list.files(path, pattern='txt', full.names=T), value=T, ignore.case=T)
 corrFile = grep('corr|fitted', list.files(path, pattern='txt', full.names=T), value=T,ignore.case=T)
+demoFile = 'example/endoscopy.xlsx'
 
-pr = predictRisk(path)
-#load('~/tmp/pr.Rdata')
+#pr = predictRisk(path)
+load('~/tmp/pr.Rdata')
 
 samples = c( sampleNames(pr,T), sampleNames(pr,F) )
 blacklist = read.table(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), sep = '\t', header=T)
-
-demoFile = params$info.file
-withD = ifelse(!is.null(demoFile), T, F)
-if (withD) demo = read.table(demoFile, sep='\t', header=T)
 
 samplesdf = data.frame(matrix(samples, ncol=1))
 if (length(samples) > 10)
@@ -45,63 +42,89 @@ if (length(samples) > 10)
 
 # Results {.tabset .tabset-fade .tabset-pills}
 
-## Risk Analysis
+## Surveillance/Treatment Recommendations {.tabset .tabset-fade .tabset-pills}
 
 See the Technical Information tab for a description of the risk probabilities and recommendation rules.
 
-### Individual Risk Per Sample
+```{r results_rx}
+recommendations = rx(pr)
+```
 
-```{r, fig.height=5}
+Based on the provided samples this individual is recommended to return for **`r tolower(rev(recommendations$Rx)[1])`**.
+
+```{r rx}
 riskCols = RColorBrewer::brewer.pal(11, "RdYlBu")[seq(1,11, 3)]
+recommendations %>%
+  select(`Time 1`, `Time 2`, Rx) %>%
+  kable(format = "html", escape = F) %>%
+  row_spec(nrow(recommendations), bold=T, color=ifelse(recommendations[nrow(recommendations),'Rule'] %in% c(1,4), 'white', 'black'), background = riskCols[recommendations[nrow(recommendations),'Rule',drop=T]]) %>%
+  kable_styling("bordered", full_width = F, position = 'left') 
+```
 
+### Risk Per Endoscopy
+
+```{r risk_endo, fig.height=4, fig.width=length(levels(pr$segmented$sample.info$Endoscopy))*2}
 printRisk <- function(x,low,high, risk='Unknown') {
   img = switch(risk, 
          'High'='img/Human_body_silhouette-RED.png',
          'Moderate'='img/Human_body_silhouette-YELLOW.png',
          'Low'='img/Human_body_silhouette-BLUE.png',
          'Unknown'='img/Human_body_silhouette-GREY.png')
-  
   paste0(paste0(c("",rep(paste0('<img src="',img,'" alt="%" width="8"></img>'), x)), collapse=""), ' <b>',x, '%</b> (',low,'%-',high,'%)')
 } 
 
-preds = predictions(pr)
-preds = merge(preds,absoluteRiskCI(pr), by='Sample')
+preds = absoluteRiskCI(pr)
 preds = preds %>% rowwise() %>% dplyr::mutate( img=printRisk(Probability*100,CI.low*100,CI.high*100,Risk) )
 
-kable(preds[,c('Sample','Risk','img')],col.names=c('Sample','Risk','Absolute Risk'), escape=FALSE) %>% kable_styling(bootstrap_options=c('bordered',full_width=T))
+kable(preds[,c('Endoscopy','Risk','img')],col.names=c('Endoscopy','Risk','Absolute Risk'), escape=FALSE) %>% kable_styling(bootstrap_options=c('bordered',full_width=T))
+
+patientEndoscopyPlot(pr)
 ```
 
-### Surveillance/Treatment Rx
 
-```{r}
-recommendations = rx(pr)
-if (withD)
-  recommendations = rx(pr,demoFile)
+### Risk Per Sample
+
+```{r risk_sample, fig.height=length(unique(pr$segmented$sample.info$GEJ.Distance)), fig.width=length(levels(pr$segmented$sample.info$Endoscopy))*2}
+printRisk <- function(x,low,high, risk='Unknown') {
+  img = switch(risk, 
+         'High'='img/Human_body_silhouette-RED.png',
+         'Moderate'='img/Human_body_silhouette-YELLOW.png',
+         'Low'='img/Human_body_silhouette-BLUE.png',
+         'Unknown'='img/Human_body_silhouette-GREY.png')
+  paste0(paste0(c("",rep(paste0('<img src="',img,'" alt="%" width="8"></img>'), x)), collapse=""), ' <b>',x, '%</b> (',low,'%-',high,'%)')
+} 
+
+preds = absoluteRiskCI(pr,'sample')
+preds = preds %>% rowwise() %>% dplyr::mutate( img=printRisk(Probability*100,CI.low*100,CI.high*100,Risk) )
+
+table = kable(preds[,c('Sample','Risk','img')],col.names=c('','Risk','Absolute Risk'), escape=FALSE) %>% kable_styling(bootstrap_options=c('bordered',full_width=T)) 
+for (endo in levels(preds$Endoscopy)) {
+  rows = which(preds$Endoscopy == endo)
+  table = table %>% group_rows(endo, rows[1], rows[length(rows)])  
+}
+table
+
+p = patientRiskTilesPlot(pr)
+
+legend = BarrettsProgressionRisk:::.get.legend(p)
+p = p + theme(legend.position = 'none')
+
+gridExtra::grid.arrange(gridExtra::arrangeGrob(p,legend,heights=c(8,1)))
 ```
 
-Based on the provided samples this individual is recommended to return for **`r tolower(rev(recommendations$Rx)[1])`**.
-
-```{r}
-recommendations %>%
-#  mutate( Rx = cell_spec(Rx, "html", color = ifelse(rule %in% c(1,4), 'white', 'black'), background = riskCols[rule], bold = (rule == 1), italic = (rule < 3) ) ) %>%
-  select(`Time 1`, `Time 2`, Rx) %>%
-  kable(format = "html", escape = F) %>%
-  row_spec(nrow(recommendations), bold=T, color=ifelse(recommendations[nrow(recommendations),'rule'] %in% c(1,4), 'white', 'black'), background = riskCols[recommendations[nrow(recommendations),'rule']]) %>%
-  kable_styling("bordered", full_width = F, position = 'left') 
-```
 
 
 ## Technical information 
 
 Risks per-sample were assigned based on percentile calibrations of the probabilities across all samples used to build the model.  Probabilities that fall in the blue are *low* risk, yellow are *moderate* risk, and red are *high* risk.
 
-```{r fig.height=4, fig.width=4}
+```{r tech_info, fig.height=4, fig.width=4}
 showPredictionCalibration() 
 ```
 
 Surveillance/treatment recommendations are then assessed per pair of samples, presuming these samples come from different timepoint/endoscopies in the same patient. The following rules are applied using copy number risks, p53 IHC, and pathology where available. 
 
-```{r}
+```{r rules_list}
 BarrettsProgressionRisk::rxRules %>% #mutate( Rx = cell_spec(Rx, "html", color = ifelse(Rule %in% c(1,4), 'white', 'black'), background = riskCols[Rule], bold = (Rule == 1), italic = (Rule < 3) ) )  %>% 
   select(Rx, Description) %>%
   kable(escape=F, caption='Rules for recommending treatment') %>% 
@@ -115,29 +138,24 @@ Sample files read in:
 
 * Raw file: _`r rawFile`_
 * Fitted file: _`r corrFile`_
-`r if(!withD) {"<!--"}`
 * Pathology/p53 IHC file: _`r demoFile`_
-`r if(!withD) {"-->"}`
 
 ## Samples 
 
-Samples provided for analysis from QDNAseq files: 
+Samples provided for analysis:
 
-```{r} 
-kable(samplesdf, col.names=rep('Sample', 1:ncol(samplesdf))) %>% kable_styling(bootstrap_options=c('striped','condensed',full_width=F))
-``` 
+```{r sample_info}
+table = kable(pr$segmented$sample.info %>% dplyr::select(-matches('Endoscopy')))  %>% kable_styling(bootstrap_options=c('striped','condensed',full_width=T))
+
+#table = kable(preds[,c('Sample','Risk','img')],col.names=c('','Risk','Absolute Risk'), escape=FALSE) %>% kable_styling(bootstrap_options=c('bordered',full_width=T)) 
+for (endo in levels(pr$segmented$sample.info$Endoscopy)) {
+  rows = which(pr$segmented$sample.info$Endoscopy == endo)
+  table = table %>% group_rows(endo, rows[1], rows[length(rows)])  
+}
+table
+```
 
 For processing and predictions these samples are presumed to be from a single patient. If this is not true please provide separate directories for the raw files from each patient.
-
-## p53 IHC & Pathology
-
-`r if(withD) {"<!--"}`
-No pathology or p53 IHC provided. 
-`r if(withD) {"-->"}`
-
-```{r eval=withD}
-kable(demo, caption='p53 and/or pathology information per sample')  %>% kable_styling(bootstrap_options=c('striped','condensed',full_width=F))
-```
 
 
 # Processing pipeline {.tabset .tabset-fade .tabset-pills}
@@ -151,7 +169,7 @@ kable(demo, caption='p53 and/or pathology information per sample')  %>% kable_st
 
 `r nrow(subset(sampleResiduals(pr), Pass))`/`r nrow(sampleResiduals(pr))` samples have passed post-segmentation quality control with a variance cutoff less than 0.015.
 
-```{r,echo=F}
+```{r qc,echo=F}
 sampleResiduals(pr) %>%
   mutate(
     Pass = cell_spec(Pass, "html", color=ifelse(Pass, 'green', 'red'), background=ifelse(Pass, 'green', 'red'))) %>%
@@ -160,20 +178,30 @@ sampleResiduals(pr) %>%
   kable_styling("bordered", full_width = F, position = 'left') 
 ```
 
-## Segment genomes
+
+## Relative Copy Number Alteration Plots
+
+These plots show the adjusted and scaled relative copy number fitted values (y-axis) plotted across the genome (chromosomes 1-22) for each sample. The bars in purple or green are regions that the model uses to predict the risk of progression. Wider bars show chromosome arms and the height for all bars reflects the relative CNA for that bin or arm.  
+
+```{r plot_cn, warning=F, echo=F,width=10, fig.height=length(pr$segmented$seg.plots)*4}
+copyNumberMountainPlot(pr, T, F)
+```
+
+
+## Raw segmented values
 
 `r nrow(segmentedValues(pr))` segments have been fitted across all samples, these are estimated to cover `r round(pr$segmented$genome.coverage*100,2)`% of the genome.
 
-```{r} 
-kable(segmentedValues(pr)[ sample(1:nrow(segmentedValues(pr)), 10) ,c(1:8)], row.names=F, caption='Example regions of the segmented data.') %>% kable_styling(bootstrap_options=c('striped','condensed',full_width=F, position='left'))
-```
+`r kable(segmentedValues(pr)[ sample(1:nrow(segmentedValues(pr)), 10) ,c(1:8)], row.names=F, caption='Example regions of the segmented data.') %>% kable_styling(bootstrap_options=c('striped','condensed',full_width=F, position='left'))`
 
-## Post Segmentation Plots
+
+## Raw Segmentation Plots
 
 These plots show the raw relative copy number fitted values from QDNAseq (red points) plotted across the genome (chromosomes 1-22) for each sample. The green show the segmented CN values that are used by the model to predict progression risk.
 
-```{r, warning=F, echo=F, fig.height=length(pr$segmented$seg.plots)*4, width=10}
+```{r plot_seg, warning=F, echo=F, fig.height=length(pr$segmented$seg.plots)*4, width=10}
 plotSegmentData(pr)
 ```
+
 
 

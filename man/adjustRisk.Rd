@@ -2,9 +2,10 @@
 % Please edit documentation in R/risk_prediction.R
 \name{adjustRisk}
 \alias{adjustRisk}
-\title{Use with caution. These are based on estimates of what we think the risk might really be #' and adjusting the resulting risk based on those estimates.}
+\title{Use with caution! These are based on estimates of what we think the risk might really be and adjusting the resulting risk based on those estimates.}
 \usage{
-adjustRisk(brr, offset = c("min", "mean", "max"))
+adjustRisk(brr, offset = c("mean", "max", "min"), by = c("endoscopy",
+  "sample"))
 }
 \arguments{
 \item{offset}{c(min,mean,max)}
@@ -12,10 +13,10 @@ adjustRisk(brr, offset = c("min", "mean", "max"))
 \item{BarrettsRiskRx}{object}
 }
 \value{
-BarrettsRiskRx object with adjusted predictions and recommentations.
+list with adjusted predictions and recommentations.
 }
 \description{
-Use with caution. These are based on estimates of what we think the risk might really be #' and adjusting the resulting risk based on those estimates.
+Use with caution! These are based on estimates of what we think the risk might really be and adjusting the resulting risk based on those estimates.
 }
 \author{
 skillcoyne

@@ -1,3 +1,7 @@
+.titleCase<-function(x) {
+  gsub("(^|[[:space:]])([[:alpha:]])", "\\1\\U\\2",x, perl=TRUE)
+}
+  
 
 # Gets a temp cache directory, not really used yet
 getcachedir<-function() {

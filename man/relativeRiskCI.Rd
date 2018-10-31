@@ -4,7 +4,7 @@
 \alias{relativeRiskCI}
 \title{Calculate upper and lower boudaries for the relative risk provided by predictRisk}
 \usage{
-relativeRiskCI(psp)
+relativeRiskCI(psp, by = c("endoscopy", "sample"), verbose = T)
 }
 \arguments{
 \item{BarrettsRiskRx}{object}

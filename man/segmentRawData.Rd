@@ -5,14 +5,14 @@
 \title{This function runs the copynumber::pcf algorithm to segment the sWGS data.
 renamed from 'binSWGS'}
 \usage{
-segmentRawData(raw.data, fit.data, blacklist = NULL, min.probes = 67,
-  gamma2 = 250, cutoff = 0.015, logTransform = F,
+segmentRawData(info, raw.data, fit.data, blacklist = NULL,
+  min.probes = 67, gamma2 = 250, cutoff = 0.015, logTransform = F,
   cache.dir = getcachedir(), build = "hg19", verbose = T)
 }
 \arguments{
-\item{raw.data}{Data frame of raw read counts}
+\item{raw.data}{Data frame of raw read counts (file name is also valid)}
 
-\item{fit.data}{Data frame of fitted read values}
+\item{fit.data}{Data frame of fitted read values (file name is also valid)}
 
 \item{blacklist}{qDNAseq_blacklistedRegions (defaults to file provided in package)}
 

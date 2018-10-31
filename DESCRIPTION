@@ -8,13 +8,13 @@ Encoding: UTF-8
 LazyData: true
 Depends:
   R (>= 3.4.1),
+  tidyverse,
   glmnet (>= 2.0-16),
-  tidyverse
-Imports:
   copynumber (>= 1.18.0),
-  QDNAseq (>= 1.14.0),
   GenomicRanges (>= 1.30.3),
-  Matrix,
+  Matrix
+Imports:
+  QDNAseq (>= 1.14.0),
   Biobase,
   bootstrap,
   data.table,
