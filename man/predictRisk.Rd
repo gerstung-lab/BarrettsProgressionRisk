@@ -4,7 +4,7 @@
 \alias{predictRisk}
 \title{Main method that should be called to use the trained model.}
 \usage{
-predictRisk(info, path = ".", raw.file.grep = "raw.*read",
+predictRisk(info, path, raw.file.grep = "raw.*read",
   corrected.file.grep = "corr|fitted", cache.dir = NULL, verbose = T)
 }
 \arguments{

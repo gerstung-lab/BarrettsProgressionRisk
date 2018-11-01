@@ -9,7 +9,7 @@ output:
       collapsed: false
 params: 
   path: '.'
-  info.file: NULL 
+  info.file: '' 
 ---
 
 ```{r setup, include=FALSE}
@@ -23,13 +23,13 @@ library(grid)
 
 knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
 
-path = params$path
-rawFile = grep('raw', list.files(path, pattern='txt', full.names=T), value=T, ignore.case=T)
-corrFile = grep('corr|fitted', list.files(path, pattern='txt', full.names=T), value=T,ignore.case=T)
-demoFile = 'example/endoscopy.xlsx'
+inputPath = normalizePath(params$path)
+clinInfoFile = normalizePath(params$info.file)
 
-#pr = predictRisk(path)
-load('~/tmp/pr.Rdata')
+rawFile = grep('raw', list.files(inputPath, pattern='txt', full.names=T), value=T, ignore.case=T)
+corrFile = grep('corr|fitted', list.files(inputPath, pattern='txt', full.names=T), value=T,ignore.case=T)
+
+pr = predictRisk(loadSampleInformation(clinInfoFile), path=inputPath)
 
 samples = c( sampleNames(pr,T), sampleNames(pr,F) )
 blacklist = read.table(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), sep = '\t', header=T)
@@ -84,7 +84,7 @@ patientEndoscopyPlot(pr)
 
 ### Risk Per Sample
 
-```{r risk_sample, fig.height=length(unique(pr$segmented$sample.info$GEJ.Distance)), fig.width=length(levels(pr$segmented$sample.info$Endoscopy))*2}
+```{r risk_sample, fig.height=length(unique(pr$segmented$sample.info$GEJ.Distance)), fig.width=length(levels(pr$segmented$sample.info$Endoscopy))}
 printRisk <- function(x,low,high, risk='Unknown') {
   img = switch(risk, 
          'High'='img/Human_body_silhouette-RED.png',
@@ -109,7 +109,11 @@ p = patientRiskTilesPlot(pr)
 legend = BarrettsProgressionRisk:::.get.legend(p)
 p = p + theme(legend.position = 'none')
 
-gridExtra::grid.arrange(gridExtra::arrangeGrob(p,legend,heights=c(8,1)))
+gridExtra::grid.arrange(p)
+```
+
+```{r fig.height=0.75, fig.width=7}
+gridExtra::grid.arrange(legend)
 ```
 
 

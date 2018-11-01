@@ -29,7 +29,7 @@ pi.hat<-function(x) exp(x)/(1+exp(x))
 #'
 #' @author skillcoyne
 #' @export
-predictRisk<-function(info, path='.', raw.file.grep='raw.*read', corrected.file.grep='corr|fitted', cache.dir=NULL, verbose=T) {
+predictRisk<-function(info, path, raw.file.grep='raw.*read', corrected.file.grep='corr|fitted', cache.dir=NULL, verbose=T) {
   if (!'SampleInformation' %in% class(info)) 
     stop("SampleInformation object from loadSampleInformation(...) required.")
 

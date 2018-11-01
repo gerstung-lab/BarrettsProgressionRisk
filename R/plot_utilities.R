@@ -121,6 +121,7 @@ showModelPredictions<-function(type='P') {
   return(p)
 }
 
+#' Per sample over time tile risk plot
 #' @name patientRiskTilesPlot
 #' @param type BarrettsRiskRx object
 #' @return ggplot object
@@ -148,6 +149,7 @@ patientRiskTilesPlot<-function(brr) {
 }
 
 
+#' Over time per endoscopy risk plot
 #' @name patientEndoscopyPlot
 #' @param type BarrettsRiskRx object
 #' @return ggplot object
