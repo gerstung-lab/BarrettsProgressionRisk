@@ -393,6 +393,7 @@ rx<-function(brr, by=c('endoscopy','sample')) {
 
 
 .readFile<-function(file, ...) {
+  message(paste("Reading",file))
   if ( tools::file_ext(file) %in% c('xlsx','xls') ) {
     data = readxl::read_xlsx(file,1,...)
   } else {

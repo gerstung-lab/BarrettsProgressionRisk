@@ -29,7 +29,12 @@ clinInfoFile = normalizePath(params$info.file)
 rawFile = grep('raw', list.files(inputPath, pattern='txt', full.names=T), value=T, ignore.case=T)
 corrFile = grep('corr|fitted', list.files(inputPath, pattern='txt', full.names=T), value=T,ignore.case=T)
 
-pr = predictRisk(loadSampleInformation(clinInfoFile), path=inputPath)
+sample.info = loadSampleInformation(clinInfoFile)
+
+#swgsObj = segmentRawData(info=sample.info, raw.data=rawFile, fit.data=corrFile)
+#pr = predictRiskFromSegments(swgsObj)
+
+pr = predictRisk(info=sample.info, path=inputPath)
 
 samples = c( sampleNames(pr,T), sampleNames(pr,F) )
 blacklist = read.table(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), sep = '\t', header=T)
@@ -84,7 +89,7 @@ patientEndoscopyPlot(pr)
 
 ### Risk Per Sample
 
-```{r risk_sample, fig.height=length(unique(pr$segmented$sample.info$GEJ.Distance)), fig.width=length(levels(pr$segmented$sample.info$Endoscopy))}
+```{r risk_sample_tbl}
 printRisk <- function(x,low,high, risk='Unknown') {
   img = switch(risk, 
          'High'='img/Human_body_silhouette-RED.png',
@@ -103,11 +108,14 @@ for (endo in levels(preds$Endoscopy)) {
   table = table %>% group_rows(endo, rows[1], rows[length(rows)])  
 }
 table
+```
 
+
+```{r risk_sample_plot, fig.height=2+length(unique(pr$segmented$sample.info$GEJ.Distance)*2), fig.width=2+length(levels(pr$segmented$sample.info$Endoscopy))*2}
 p = patientRiskTilesPlot(pr)
 
 legend = BarrettsProgressionRisk:::.get.legend(p)
-p = p + theme(legend.position = 'none')
+p = p + theme(legend.position = 'none', axis.text.x = element_text(angle=45)) + labs(title='Sample risk by endoscopy', y='Biopsy height', x='Date')
 
 gridExtra::grid.arrange(p)
 ```
@@ -142,7 +150,7 @@ Sample files read in:
 
 * Raw file: _`r rawFile`_
 * Fitted file: _`r corrFile`_
-* Pathology/p53 IHC file: _`r demoFile`_
+* Pathology/p53 IHC file: _`r clinInfoFile`_
 
 ## Samples 
 
@@ -187,7 +195,7 @@ sampleResiduals(pr) %>%
 
 These plots show the adjusted and scaled relative copy number fitted values (y-axis) plotted across the genome (chromosomes 1-22) for each sample. The bars in purple or green are regions that the model uses to predict the risk of progression. Wider bars show chromosome arms and the height for all bars reflects the relative CNA for that bin or arm.  
 
-```{r plot_cn, warning=F, echo=F,width=10, fig.height=length(pr$segmented$seg.plots)*4}
+```{r plot_cn, warning=F, echo=F, fig.width=22, fig.height=length(pr$segmented$seg.plots)*4}
 copyNumberMountainPlot(pr, T, F)
 ```
 
@@ -203,7 +211,7 @@ copyNumberMountainPlot(pr, T, F)
 
 These plots show the raw relative copy number fitted values from QDNAseq (red points) plotted across the genome (chromosomes 1-22) for each sample. The green show the segmented CN values that are used by the model to predict progression risk.
 
-```{r plot_seg, warning=F, echo=F, fig.height=length(pr$segmented$seg.plots)*4, width=10}
+```{r plot_seg, warning=F, echo=F, fig.height=length(pr$segmented$seg.plots)*4, fig.width=22}
 plotSegmentData(pr)
 ```
 

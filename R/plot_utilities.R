@@ -133,7 +133,7 @@ patientRiskTilesPlot<-function(brr) {
     stop("BarrettsRiskRx required")
 
   preds = brr$per.sample
-  preds$GEJ.Distance = factor(preds$GEJ.Distance, ordered=T)
+  preds$GEJ.Distance = fct_rev(factor(preds$GEJ.Distance, ordered=T))
   preds$Endoscopy = factor(preds$Endoscopy, ordered=T)
   
   p = ggplot(preds, aes(Endoscopy, GEJ.Distance)) +
