@@ -82,14 +82,19 @@ runQDNAseq<-function(bamPath, outputPath) {
 
 
 #' @name loadSampleInformation
-#' @param sample.file
-#' @param clin.file
+#' @param samples Either a filename or dataframe with appropriate information
 #' @return SampleInformation object (annotated tibble)
 #'
 #' @author skillcoyne
 #' @export
-loadSampleInformation<-function(sample.file) {
-  sample.info = .readFile(sample.file)
+loadSampleInformation<-function(samples, path=c('NDBE','ID','LGD','HGD','IMC','OAC')) {
+  if (is.character(samples)) {
+    sample.info = .readFile(samples)
+  } else if (is.data.frame(samples)) {
+    sample.info = samples
+  } else {
+    stop("Filename or data frame required.")
+  }
 
   if (length(which(c('Sample','Endoscopy') %in% colnames(sample.info))) < 2)
     stop("Sample information requires at least two columns: 'Sample' and 'Endoscopy'. Sample should be unique text identifying the sample (matching the samples in your data files), and 'Endoscopy' should be a date or integer value indicating the (descending) order in which the endoscopy was performed. Multiple samples may belong to a single endoscopy.")
@@ -106,7 +111,7 @@ loadSampleInformation<-function(sample.file) {
   
   pathCol = grep('Pathology',colnames(sample.info))
   if (length(pathCol) > 0) 
-    sample.info[[pathCol]] = factor(sample.info[[pathCol]], levels=c('NDBE','ID','LGD','HGD','IMC','OAC'), labels=c('NDBE','ID','LGD','HGD','IMC','OAC'), ordered=T)
+    sample.info[[pathCol]] = factor(sample.info[[pathCol]], levels=path, labels=path, ordered=T)
   
   p53Col = grep('P53',colnames(sample.info))
   if (length(p53Col) > 0) 
@@ -178,7 +183,7 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=NULL, min.probes=67
   if (is.character(raw.data) & is.character(fit.data)) {
     raw.data = readr::read_tsv(raw.data, col_names=T, col_types = cols('chrom'=col_character()))
     fit.data = readr::read_tsv(fit.data, col_names=T, col_type = cols('chrom'=col_character()))
-  } else if (is.data.frame(fit.data)) {
+  } else if (is.data.frame(fit.data) & !is.tibble(fit.data)) {
     raw.data = as_tibble(raw.data)
     fit.data = as_tibble(fit.data)
   } else {
