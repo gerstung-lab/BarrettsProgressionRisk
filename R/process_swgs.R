@@ -89,6 +89,7 @@ runQDNAseq<-function(bamPath, outputPath) {
 #' @export
 loadSampleInformation<-function(samples, path=c('NDBE','ID','LGD','HGD','IMC','OAC')) {
   if (is.character(samples)) {
+    #sample.info = .readFile(samples, col_types = cols('Patient ID'=col_character(), 'Pathology'=col_character(), 'Sample'=col_character(), 'P53 IHC'=col_integer()))
     sample.info = .readFile(samples)
   } else if (is.data.frame(samples)) {
     sample.info = samples
@@ -106,8 +107,14 @@ loadSampleInformation<-function(samples, path=c('NDBE','ID','LGD','HGD','IMC','O
     
   if (length(which(!cols_found)) > 0)
     warning(paste0('Missing expected columns from sample information: ',paste(names(which(!cols_found)), collapse=', '), ". Recommendations will be based on predicted risks and: ",paste(names(which(cols_found)), collapse=', ')) )
+
+  strings = do.call(rbind, lapply(sample.info$Endoscopy,function(x) unlist(strsplit(x,'-|/'))))
+  sep = ifelse(grepl('-',sample.info$Endoscopy), '-','/')
+  dates = ifelse (as.integer(strings[,1]) > 1900, paste(c('%Y','%m', '%d'), collapse=sep), paste(c('%d','%m','%Y'), collapse=sep) )
   
-  sample.info$Endoscopy = factor(sample.info$Endoscopy, ordered=T)
+  sample.info = sample.info %>% rowwise %>% dplyr::mutate(Endoscopy = parse_date(Endoscopy, format=dates))
+  
+  #sample.info$Endoscopy = factor(sample.info$Endoscopy, ordered=T)
   
   pathCol = grep('Pathology',colnames(sample.info))
   if (length(pathCol) > 0) 
@@ -201,7 +208,11 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=NULL, min.probes=67
   raw.data = raw.data %>% dplyr::arrange(raw.data[[chrCol]], raw.data[[startCol]])
     
   countCols = grep('loc|feat|chr|start|end', colnames(fit.data), invert=T)
-
+  if (length(countCols) == 1) {
+    colnames(raw.data)[countCols] = info$Sample
+    colnames(fit.data)[countCols] = info$Sample
+  }
+  
   smps = intersect(info$Sample, colnames(fit.data)[countCols])
   if (length(smps) != length(info$Sample)) {
     warning(paste0("SampleInformation object and fit/raw data do not have the same samples. Using only samples from SampleInformation (n=", length(smps), ")."))

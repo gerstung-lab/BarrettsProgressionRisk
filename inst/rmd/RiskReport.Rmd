@@ -31,10 +31,8 @@ corrFile = grep('corr|fitted', list.files(inputPath, pattern='txt', full.names=T
 
 sample.info = loadSampleInformation(clinInfoFile)
 
-#swgsObj = segmentRawData(info=sample.info, raw.data=rawFile, fit.data=corrFile)
-#pr = predictRiskFromSegments(swgsObj)
-
-pr = predictRisk(info=sample.info, path=inputPath)
+swgsObj = segmentRawData(info=sample.info, raw.data=rawFile, fit.data=corrFile)
+pr = predictRiskFromSegments(swgsObj)
 
 samples = c( sampleNames(pr,T), sampleNames(pr,F) )
 blacklist = read.table(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), sep = '\t', header=T)
@@ -204,7 +202,11 @@ copyNumberMountainPlot(pr, T, F)
 
 `r nrow(segmentedValues(pr))` segments have been fitted across all samples, these are estimated to cover `r round(pr$segmented$genome.coverage*100,2)`% of the genome.
 
-`r kable(segmentedValues(pr)[ sample(1:nrow(segmentedValues(pr)), 10) ,c(1:8)], row.names=F, caption='Example regions of the segmented data.') %>% kable_styling(bootstrap_options=c('striped','condensed',full_width=F, position='left'))`
+```{r} 
+maxCol = ifelse(ncol(segmentedValues(pr)) < 8, ncol(segmentedValues(pr)) , 8)
+
+kable(segmentedValues(pr)[ sample(1:nrow(segmentedValues(pr)), 10) ,c(1:maxCol)], row.names=F, caption='Example regions of the segmented data.') %>% kable_styling(bootstrap_options=c('striped','condensed',full_width=F, position='left'))
+```
 
 
 ## Raw Segmentation Plots

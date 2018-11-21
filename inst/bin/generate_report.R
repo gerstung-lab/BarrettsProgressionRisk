@@ -68,8 +68,6 @@ message(paste('Data path:', qdnaseq.path))
 message(paste('Information file:', clin.file))
 message(paste('Output directory:', output.dir))
 
-
-
 options(warn = -1)
 rmd = system.file('rmd','RiskReport.Rmd',package="BarrettsProgressionRisk")
 message(rmd)

@@ -133,7 +133,12 @@ patientRiskTilesPlot<-function(brr) {
     stop("BarrettsRiskRx required")
 
   preds = brr$per.sample
-  preds$GEJ.Distance = fct_rev(factor(preds$GEJ.Distance, ordered=T))
+  
+  if ('GEJ.Distance' %in% colnames(preds)) {
+    preds$GEJ.Distance = fct_rev(factor(preds$GEJ.Distance, ordered=T))
+  } else {
+    preds$GEJ.Distance = 1
+  }
   preds$Endoscopy = factor(preds$Endoscopy, ordered=T)
   
   p = ggplot(preds, aes(Endoscopy, GEJ.Distance)) +
@@ -163,12 +168,9 @@ patientEndoscopyPlot<-function(brr) {
   preds = absoluteRiskCI(brr)
   preds = preds %>% rowwise() %>% dplyr::mutate( img=printRisk(Probability*100,CI.low*100,CI.high*100,Risk) )
   
-  preds$Endoscopy = as.Date(preds$Endoscopy)
-  
   ggplot(preds, aes(Endoscopy, Probability)) + ylim(0,1) +
     geom_line(color='grey') + geom_errorbar(aes(ymin=CI.low,ymax=CI.high, color=Risk), width=5, show.legend=F) + geom_point(aes(color=Risk), size=5) + 
     scale_color_manual(values=riskColors(), limits=names(riskColors())) + labs(y='Absolute Risk', x='Endoscopy Date',title='Absolute risks over time') + theme_bw() + theme(legend.position='bottom')
-  
 }
 
 
@@ -200,13 +202,12 @@ copyNumberMountainPlot<-function(brr,annotate=T, legend=T) {
 
 .mountainPlots<-function(brr,annotate=T) {
   pal = c('#238B45', 'grey','#6A51A3')
-  chr.info = chrInfo(build=pr$segmented$chr.build.info)
+  chr.info = chrInfo(build=brr$segmented$chr.build.info)
   
   samples = rownames(brr$tiles)
-  locs = get.loc(brr$tiles[,-ncol(brr$tiles)])
+  locs = get.loc(brr$tiles[,-ncol(brr$tiles),drop=F])
 
   cvdf = bind_cols(get.loc(t(coef_cv_RR)),as_tibble(coef_cv_RR))
-  
   
   plist = list()
   for (sample in samples) {

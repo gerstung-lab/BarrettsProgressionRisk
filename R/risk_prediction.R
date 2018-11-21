@@ -117,14 +117,18 @@ predictRiskFromSegments<-function(swgsObj, verbose=T) {
   
   # Errors are the per window, weighted mean error of all segments in the bin
   Xerr = cbind(segtiles$error, armtiles$error)
-  Xerr_diag = apply(Xerr, 1, function(x) { diag(as.matrix(x^2)) })
-  
+  #if (nrow(Xerr) > 1) {
+    Xerr_diag = apply(Xerr, 1, function(x) { diag(as.matrix(x^2)) })
+  #} else {
+  #  Xerr_diag = diag(as.matrix(Xerr)^2)  
+  #}
+
   # Not sure aobut this step...
   covB = cov(coef.error[,'jack.se',drop=F])[1]
-  X = t(mergedDf[,coef.error$coef])
+  X = t(mergedDf[,coef.error$coef,drop=F])
   B = coef.error[,'1',drop=F]
   
-  Var_rr = apply(X,2,function(x) sum(x*covB*x))+sapply(Xerr_diag, function(x) sum(B*x*B))
+  Var_rr = apply(X,2,function(x) sum(x*covB*x)) + sapply(Xerr_diag, function(x) sum(B*x*B))
   perSampleError = sqrt( Var_rr )
   perSampleError = tibble('Sample'=names(perSampleError),'Error'=perSampleError)
   
@@ -140,9 +144,8 @@ predictRiskFromSegments<-function(swgsObj, verbose=T) {
                                       'Risk'=sapply(probs[,1], .risk)), swgsObj$sample.info, by='Sample')
   
   per.endo.preds = .setUpRxTablePerEndo(per.sample.preds, 'max', verbose) %>% rowwise() %>% mutate( Risk=.risk(Probability))
-  perEndoError = .setUpRxTablePerEndo( perSampleError, 'max', F) %>% select('Endoscopy','Error')
+  perEndoError = .setUpRxTablePerEndo(perSampleError, 'max', F) %>% select('Endoscopy','Error')
   
-  # TODO There's a better way to do R objects...
   psp = list('per.endo'=per.endo.preds, 'per.sample'=per.sample.preds, 'segmented'=swgsObj, 'per.sample.error'=perSampleError, 'per.endo.error'=perEndoError, 'tiles'=mergedDf)
   class(psp) <- c('BarrettsRiskRx', class(psp))
   return(psp)
@@ -354,7 +357,7 @@ rx<-function(brr, by=c('endoscopy','sample')) {
   preds = preds %>% arrange(preds[[riskBy]])
   
   rules = as_tibble(matrix(ncol=3, nrow=0, dimnames=list(c(), c('Time 1','Time 2','Rule'))))
-  for (i in 1:(nrow(preds)-1)) {
+  for (i in 1:nrow(preds)) {
     risks = table(preds$Risk[i:(i+1)])
     p53 = NULL
     if (length(p53Col) > 0) {
@@ -374,6 +377,7 @@ rx<-function(brr, by=c('endoscopy','sample')) {
     }
     
     rules = add_row(rules, 'Time 1'=preds[[riskBy]][i], 'Time 2'=preds[[riskBy]][(i+1)], 'Rule'=as.integer(rule)  )
+    if (i == nrow(preds)) break;
   }
   rules$Rx = sapply(rules$Rule, .rule.rx)
   
@@ -388,7 +392,7 @@ rx<-function(brr, by=c('endoscopy','sample')) {
 
 .risk<-function(p) {
   if (!is.numeric(p) | (p > 1 | p < 0) ) stop("Numeric probability between 0-1 required")
-  return(as.character(subset(pred.confidence, p <= r2 & p >= r1)$Risk))
+  return(as.character(max(subset(pred.confidence, p <= r2 & p >= r1)$Risk)))
 }
 
 
@@ -408,11 +412,6 @@ rx<-function(brr, by=c('endoscopy','sample')) {
   if (verbose)
     message(paste0("Evaluating the ",func," risk per endoscopy"))
   
-  if (nrow(sample.info) < nrow(predDf)) {
-    warning(paste("Fewer samples in",file,"than in the data files. Ignoring demo data."))
-    return(NULL)
-  }
-
   if (func == 'max') {
     predDf = predDf %>% group_by(Endoscopy) %>% dplyr::mutate('n.samples'=length(Endoscopy),'Samples'=paste(Sample,collapse=',')) %>% dplyr::summarise_all('max') %>% select(-matches('^Sample$'))
   } else {
