@@ -30,17 +30,26 @@ require(RColorBrewer)
 #' Plot genome-wide raw and segmented values for all samples in the segmentation phase.
 #' @name plotSegmentData
 #' @param BarrettsRiskRx or SegmentedSWGS object
+#' @param as Return type, plot or list of plots
 #' @return ggplot of raw and segmented values
 #'
 #' @author skillcoyne
 #' @export
-plotSegmentData<-function(brr) {
+plotSegmentData<-function(brr, as=c('plot','list')) {
   if (length(which(class(brr) %in% c('BarrettsRiskRx', 'SegmentedSWGS'))) <= 0)
     stop("BarrettsRiskRx or SegmentedSWGS required")
-  if ('SegmentedSWGS' %in% class(brr) )
-    do.call(gridExtra::grid.arrange, c(brr$seg.plots, ncol=1))
+  rettype = match.arg(as)  
+  
+  if ('SegmentedSWGS' %in% class(brr))  {
+    plotlist = brr$seg.plots
+  } else {
+    plotlist = brr$segmented$seg.plots  
+  }
+
+  if (rettype == 'plot')
+    return(do.call(gridExtra::grid.arrange, c(plotlist, ncol=1)))
   else 
-    do.call(gridExtra::grid.arrange, c(brr$segmented$seg.plots, ncol=1))
+    return(plotlist)
 }
 
 
@@ -51,13 +60,21 @@ plotSegmentData<-function(brr) {
 #'
 #' @author skillcoyne
 #' @export
-plotCorrectedCoverage<-function(brr) {
+plotCorrectedCoverage<-function(brr, as=c('plot','list')) {
   if (length(which(class(brr) %in% c('BarrettsRiskRx', 'SegmentedSWGS'))) <= 0)
     stop("BarrettsRiskRx or SegmentedSWGS required")
-  if ('SegmentedSWGS' %in% class(brr) )
-    return(brr$cv.plot)
+  rettype = match.arg(as)  
+  
+  if ('SegmentedSWGS' %in% class(brr))  {
+    plotlist = brr$cv.plot
+  } else {
+    plotlist = brr$segmented$cv.plot  
+  }
+  
+  if (rettype == 'plot')
+    return(do.call(gridExtra::grid.arrange, c(plotlist, ncol=1)))
   else 
-    return(brr$segmented$cv.plot)
+    return(plotlist)
 }
 
 #' Predictions risk calibration plot
@@ -66,13 +83,15 @@ plotCorrectedCoverage<-function(brr) {
 #'
 #' @author skillcoyne
 #' @export
-showPredictionCalibration<-function() {
+showPredictionCalibration<-function(df=NULL) {
+  if (is.null(df)) df = pred.confidence
+  
   plot.theme = theme(text=element_text(size=12), panel.background=element_blank(), strip.background =element_rect(fill="white"),  
                      strip.text = element_text(size=12), 
                      axis.line=element_line(color='black'), panel.grid.major=element_line(color='grey90'),
                      panel.border = element_rect(color="grey", fill=NA, size=0.5), panel.spacing = unit(0.1, 'lines')  ) 
   
-  ggplot(pred.confidence, aes(mn, perc)) + 
+  ggplot(df, aes(mn, perc)) + 
     geom_rect(aes(xmin=r1, xmax=r2, ymin=0,ymax=1, fill=Risk), alpha=0.6) + 
     scale_fill_manual(values=risk.colors, limits=levels(pred.confidence$Risk) ) +
     geom_vline(xintercept=cuts[2:(length(cuts)-1)], color='grey88') +

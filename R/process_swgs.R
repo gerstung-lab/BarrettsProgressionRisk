@@ -80,9 +80,10 @@ runQDNAseq<-function(bamPath, outputPath) {
 }
 
 
-
+#' Set up the sample information required for analysis.
 #' @name loadSampleInformation
 #' @param samples Either a filename or dataframe with appropriate information
+#' @param path Ordered list of pathology abbreviations (OPT)
 #' @return SampleInformation object (annotated tibble)
 #'
 #' @author skillcoyne
@@ -108,11 +109,19 @@ loadSampleInformation<-function(samples, path=c('NDBE','ID','LGD','HGD','IMC','O
   if (length(which(!cols_found)) > 0)
     warning(paste0('Missing expected columns from sample information: ',paste(names(which(!cols_found)), collapse=', '), ". Recommendations will be based on predicted risks and: ",paste(names(which(cols_found)), collapse=', ')) )
 
-  strings = do.call(rbind, lapply(sample.info$Endoscopy,function(x) unlist(strsplit(x,'-|/'))))
-  sep = ifelse(grepl('-',sample.info$Endoscopy), '-','/')
-  dates = ifelse (as.integer(strings[,1]) > 1900, paste(c('%Y','%m', '%d'), collapse=sep), paste(c('%d','%m','%Y'), collapse=sep) )
-  
-  sample.info = sample.info %>% rowwise %>% dplyr::mutate(Endoscopy = parse_date(Endoscopy, format=dates))
+  endo.date<-function(endo) {
+    if (is.character(endo)) {
+      strings = unlist(strsplit(endo, '-|/'))
+      
+      sep = ifelse(grepl("-", endo), "-", "/")
+      dates = ifelse(as.integer(strings[1]) > 1900, paste(c("%Y", "%m", "%d"), collapse = sep), paste(c("%d", "%m", "%Y"), collapse = sep))
+      parse_date(endo, format=dates)
+    } else {
+      as.Date(endo)
+    }
+  }
+
+  sample.info = sample.info %>% rowwise %>% dplyr::mutate(Endoscopy = endo.date(Endoscopy))
   
   #sample.info$Endoscopy = factor(sample.info$Endoscopy, ordered=T)
   
@@ -185,7 +194,7 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=NULL, min.probes=67
     stop("SampleInformation object from loadSampleInformation(...) required")
 
   if (is.null(blacklist) | !is.data.frame(blacklist)) 
-    blacklist = readr::read_tsv(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), col_names=T, col_types=cols(col_character(), col_integer(), col_integer()))
+    blacklist = readr::read_tsv(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), col_names=T, col_types='cii')  
 
   if (is.character(raw.data) & is.character(fit.data)) {
     raw.data = readr::read_tsv(raw.data, col_names=T, col_types = cols('chrom'=col_character()))
@@ -315,8 +324,6 @@ scoreCX <- function(df, MARGIN) {
 #' @author skillcoyne
 #' @export
 tileSegments<-function(swgsObj, size=5e6, verbose=T) {
-  require(tibble)
-  
   if (class(swgsObj)[1] != 'SegmentedSWGS')
     stop("SegmentedSWGS object missing")
   
@@ -324,7 +331,7 @@ tileSegments<-function(swgsObj, size=5e6, verbose=T) {
     stop("Size must be numeric, or 'arms'")
 
   data = swgsObj$seg.vals
-  resids = swgsObj$segment.residual.MSE
+  resids = swgsObj$segment.residual.MSE[as.character(subset(swgsObj$residuals, Pass)$sample)] 
   if (!is.tibble(data)) data = as_tibble(data)
   
   #mse = mse[,intersect(colnames(data), colnames(mse))]
@@ -528,13 +535,17 @@ tileSegments<-function(swgsObj, size=5e6, verbose=T) {
   colnames(df)[-infoCols] = colnames(fit.data)[countCols]
   df = base::merge(df, chr.info[,c('chr','chr.length')], by.x='chrom',by.y='chr',all.x=T)
 
-  df = reshape::melt(df, measure.vars=colnames(fit.data)[countCols])
-  pp = ggplot(df, aes(x=1:chr.length)) + ylim(c(0, quantile(df$value, probs=0.75, na.rm=T)*2)) +
-    facet_grid(variable~chrom, space='free', scales='free') +
-    geom_point( aes(start, value), color='darkred', alpha=.4) +  
-    labs(title='Coverage', x='Chromosomes', y="corrected depth/15KB") + 
-    theme_bw() + theme(axis.text.x=element_blank(), panel.spacing.x=unit(0,'lines'))
-
+  plotlist = list()
+  for (col in countCols) {
+    tmp = reshape::melt(df[,c(infoCols, col)], measure.vars=colnames(fit.data)[col])
+    p = ggplot(tmp, aes(x=1:chr.length)) + ylim(c(0, quantile(tmp$value, probs=0.75, na.rm=T)*2)) +
+      facet_grid(~chrom, space='free', scales='free') +
+      geom_point( aes(start, value), color='darkred', alpha=.4) +  
+      labs(title=colnames(fit.data[col]), x='Chromosomes', y="corrected depth/15KB") + 
+      theme_bw() + theme(axis.text.x=element_blank(), panel.spacing.x=unit(0,'lines'))
+    plotlist[[colnames(fit.data)[col]]] = p
+  }
+  
   message(paste(nrow(blacklist), "genomic regions in the exclusion list."))
 
   fit.data$in.blacklist = F
@@ -566,5 +577,5 @@ tileSegments<-function(swgsObj, size=5e6, verbose=T) {
   data = cbind(fit.data[good.bins,c('chrom','start')],window.depths.standardised[good.bins,!is.na(sdevs)])
   colnames(data)[-c(1:2)] = colnames(raw.data)[countCols]
 
-  return(list('data'=data,'sdevs'=sdevs, 'good.bins'=good.bins, 'window.depths.standardised'=window.depths.standardised, 'fit.data'=fit.data, 'cv.plot'=pp))
+  return(list('data'=data,'sdevs'=sdevs, 'good.bins'=good.bins, 'window.depths.standardised'=window.depths.standardised, 'fit.data'=fit.data, 'cv.plot'=plotlist))
 }

@@ -4,7 +4,7 @@
 \alias{plotCorrectedCoverage}
 \title{Plot genome-wide coverage from adjusted raw data}
 \usage{
-plotCorrectedCoverage(brr)
+plotCorrectedCoverage(brr, as = c("plot", "list"))
 }
 \arguments{
 \item{BarrettsRiskRx}{or SegmentedSWGS object}

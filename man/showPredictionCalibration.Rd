@@ -4,7 +4,7 @@
 \alias{showPredictionCalibration}
 \title{Predictions risk calibration plot}
 \usage{
-showPredictionCalibration()
+showPredictionCalibration(df = NULL)
 }
 \value{
 ggplot object

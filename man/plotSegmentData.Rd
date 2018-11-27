@@ -4,9 +4,11 @@
 \alias{plotSegmentData}
 \title{Plot genome-wide raw and segmented values for all samples in the segmentation phase.}
 \usage{
-plotSegmentData(brr)
+plotSegmentData(brr, as = c("plot", "list"))
 }
 \arguments{
+\item{as}{Return type, plot or list of plots}
+
 \item{BarrettsRiskRx}{or SegmentedSWGS object}
 }
 \value{
