@@ -199,7 +199,7 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=NULL, min.probes=67
   if (is.character(raw.data) & is.character(fit.data)) {
     raw.data = readr::read_tsv(raw.data, col_names=T, col_types = cols('chrom'=col_character()))
     fit.data = readr::read_tsv(fit.data, col_names=T, col_type = cols('chrom'=col_character()))
-  } else if (is.data.frame(fit.data) & !is.tibble(fit.data)) {
+  } else if (is.data.frame(fit.data)) {
     raw.data = as_tibble(raw.data)
     fit.data = as_tibble(fit.data)
   } else {
