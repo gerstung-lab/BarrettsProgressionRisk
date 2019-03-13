@@ -5,14 +5,19 @@
 #' 
 #' @author 
 #' @export
-runQDNAseq<-function(bamPath, outputPath) {
+runQDNAseq<-function(bam=NULL,path=NULL,outputPath=NULL, minMapQ=37) {
   require(Biobase) 
   require(QDNAseq) 
   require(tidyverse) 
   
-  if (length(list.files(bamPath, 'bam')) <= 0)
-    stop("No bam files found in current directory. Exiting.")
-
+  if ((!is.null(bam) && !file.exists(bam)) || rev(unlist(strsplit(basename(bam), '\\.')))[1] != 'bam' ) {
+    error = paste0('BAM file "', bam, '" does not exist.')
+  } else if (is.null(bam) && length(list.files(path, 'bam')) <= 0) {
+    error = paste(error, "No bam files found in current directory. Exiting.", sep='\n')
+  }
+  if (!is.null(error)) 
+    stop(error)
+      
   if (!dir.exists(outputPath))
     dir.create(outputPath, recursive = T)
   
@@ -27,7 +32,13 @@ runQDNAseq<-function(bamPath, outputPath) {
     write_tsv(paste(outputPath,"15kbp.txt",sep='/'))
   
   # process BAM files obtaining read counts within bins
-  readCounts <- QDNAseq::binReadCounts(bins, path = bamPath)
+  if (!is.null(bam)) {
+    message(paste0('Binning read counts (min mapQ=',minMapQ,') from ', bam))
+    readCounts <- QDNAseq::binReadCounts(bins, bamfiles=bam, minMapq=minMapQ)
+  } else {
+    message(paste0('Binning read counts from BAM files in ', path))
+    readCounts <- QDNAseq::binReadCounts(bins, path=path, minMapq=minMapQ)
+  }
   
   pData(readCounts) %>%
     rownames_to_column(var = "sample") %>%
@@ -238,12 +249,12 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=NULL, min.probes=67
 
   if (ncol(data) < 4) { # Single sample
       if (verbose) message(paste("Segmenting single sample gamma=",round(gamma2*sdev,2)))
-      res = copynumber::pcf( data=data, gamma=gamma2*sdev, fast=F, verbose=verbose, return.est=F )
+      res = copynumber::pcf( data=data, gamma=gamma2*sdev, fast=F, verbose=verbose, return.est=F, assembly=build )
       colnames(res)[grep('mean', colnames(res))] = colnames(raw.data)[countCols]
       res$sampleID = NULL
   } else { # for most we have multiple samples
       message(paste("Segmenting", (ncol(data)-2), "samples gamma=",round(gamma2*sdev,2)))
-      res = copynumber::multipcf( data=data, gamma=gamma2*sdev, fast=F, verbose=verbose, return.est=F )
+      res = copynumber::multipcf( data=data, gamma=gamma2*sdev, fast=F, verbose=verbose, return.est=F, assembly=build )
   }
   tmp.seg = tempfile("segments.",cache.dir,".Rdata")
   save.image(file=tmp.seg)
@@ -278,7 +289,7 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=NULL, min.probes=67
 
   # Get mean(var(MAD(segments))) per sample
   pvr = .per.sample.residual.variance(resids)
-  pvr$Pass = pvr$varMAD_median <= cutoff
+  pvr$Pass = round(pvr$varMAD_median, 3) <= cutoff
   
   qcsamples = as.character(subset(pvr, Pass)$sample)
   if (verbose) message(paste(length(qcsamples), '/', nrow(pvr), ' samples passed QC.', sep=''))
