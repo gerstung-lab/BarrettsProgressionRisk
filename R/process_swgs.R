@@ -3,7 +3,7 @@
 #' @param bamPath Location with bam files to be processed using QDNAseq 
 #' @param outputPath Location to output resulting raw and fitted read files and plots
 #' 
-#' @author 
+#' @author skillcoyne
 #' @export
 runQDNAseq<-function(bam=NULL,path=NULL,outputPath=NULL, minMapQ=37) {
   require(Biobase) 
@@ -89,7 +89,6 @@ runQDNAseq<-function(bam=NULL,path=NULL,outputPath=NULL, minMapQ=37) {
   noisePlot(readCountsCorrected)
   dev.off()
 }
-
 
 #' Set up the sample information required for analysis.
 #' @name loadSampleInformation
@@ -289,6 +288,9 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=NULL, min.probes=67
 
   # Get mean(var(MAD(segments))) per sample
   pvr = .per.sample.residual.variance(resids)
+  digits = length(unlist((strsplit(unlist(strsplit(as.character(cutoff), '\\.'))[2], ''))))
+  pvr = pvr %>% mutate_at(vars(contains('MAD')), list(round), digits)
+  
   pvr$Pass = round(pvr$varMAD_median, 3) <= cutoff
   
   qcsamples = as.character(subset(pvr, Pass)$sample)
@@ -342,6 +344,7 @@ tileSegments<-function(swgsObj, size=5e6, verbose=T) {
     stop("Size must be numeric, or 'arms'")
 
   data = swgsObj$seg.vals
+  ## TODO: bug -- when no samples have passed this fails as there's no proper error handling here...FIX THIS NOW
   resids = swgsObj$segment.residual.MSE[as.character(subset(swgsObj$residuals, Pass)$sample)] 
   if (!is.tibble(data)) data = as_tibble(data)
   

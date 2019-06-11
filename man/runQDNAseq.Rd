@@ -15,3 +15,6 @@ runQDNAseq(bam = NULL, path = NULL, outputPath = NULL,
 \description{
 Run QNDAseq on bam files using previously determined parameters and output the required raw/filtered data files
 }
+\author{
+skillcoyne
+}

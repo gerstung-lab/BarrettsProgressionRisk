@@ -1,3 +1,5 @@
+pi.hat<-function(x) exp(x)/(1+exp(x))
+
 
 #' Times per sample are determined by the order of the sample as given by the demoFile, or by the order of the samples in the dataset.
 #' @name rxRules
@@ -16,8 +18,6 @@ rxRules<-
       'Two or more consecutive low risk predictions.')
   )
 
-
-pi.hat<-function(x) exp(x)/(1+exp(x))
 
 #' Main method that should be called to use the trained model.
 #' @name predictRisk
@@ -50,8 +50,8 @@ predictRisk<-function(info, path, raw.file.grep='raw.*read', corrected.file.grep
   if (verbose)
     message(paste("Raw reads file: ", rawFile, "\n", "Corrected reads file: ", corrFile, "\n", sep=''))
 
-  raw.data = as_tibble(data.table::fread(rawFile,stringsAsFactors=F, showProgress=verbose))
-  fit.data = as_tibble(data.table::fread(corrFile,stringsAsFactors=F,showProgress=verbose))
+  raw.data = readr::read_tsv(rawFile, col_names=T, col_types = cols('chrom'=col_character()))
+  fit.data = readr::read_tsv(corrFile, col_names=T, col_type = cols('chrom'=col_character()))
 
   if (length(which(dim(raw.data) == dim(fit.data))) != 2)
     stop("Raw and corrected read files do not have the same number of rows or columns.")
@@ -209,7 +209,6 @@ relativeRiskCI<-function(psp, by=c('endoscopy','sample'), verbose=T) {
   return(preds)
 }
 
-
 #' Get the per-sample residuals calculated from the segmentation phase.
 #' @name sampleResiduals
 #' @param BarrettsRiskRx object
@@ -226,7 +225,6 @@ sampleResiduals<-function(brr) {
     return(brr$segmented$residuals)  
 }
 
-
 #' Get the samplenames 
 #' @name sampleNames
 #' @param BarrettsRiskRx object
@@ -241,8 +239,6 @@ sampleNames<-function(brr,passQC=T) {
   if (!passQC) df = brr$segmented$failedQC
   return(intersect(colnames(df), all))
 }
-
-
 
 #' Get the segmented values for samples from the segmentation phase.
 #' @name segmentedValues
@@ -259,8 +255,6 @@ segmentedValues<-function(brr, passQC=T) {
   if (!passQC) df = brr$segmented$failedQC
   return(df)
 }
-
-
 
 #' Use with caution! These are based on estimates of what we think the risk might really be and adjusting the resulting risk based on those estimates.
 #' @name adjustRisk
