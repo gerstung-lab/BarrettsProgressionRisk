@@ -126,7 +126,7 @@ medianFilter <- function(x,k){
 }
 
 .bootstrap.coef.stderr<-function() {
-  fitCoefs = as.data.frame(as.matrix(coef(fitV, lambda)))[-1,,drop=F]
+  fitCoefs = as.data.frame(as.matrix(glmnet::coef.glmnet(fitV, lambda)))[-1,,drop=F]
   fitCoefs = fitCoefs[which(fitCoefs != 0),,drop=F]
   
   cfs = unique(unlist(sapply(nzcoefs, function(x) x[['coef']])))

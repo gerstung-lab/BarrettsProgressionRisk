@@ -4,10 +4,12 @@
 \alias{predictions}
 \title{Get predictions from the model}
 \usage{
-predictions(brr)
+predictions(brr, func = c("sample", "endoscopy"))
 }
 \arguments{
 \item{BarrettsRiskRx}{object REQ}
+
+\item{c(sample, }{endo)}
 }
 \value{
 predictions data frame

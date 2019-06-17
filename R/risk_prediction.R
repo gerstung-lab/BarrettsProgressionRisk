@@ -118,7 +118,7 @@ predictRiskFromSegments<-function(swgsObj, verbose=T) {
   # Errors are the per window, weighted mean error of all segments in the bin
   Xerr = cbind(segtiles$error, armtiles$error)
   #if (nrow(Xerr) > 1) {
-    Xerr_diag = apply(Xerr, 1, function(x) { diag(as.matrix(x^2)) })
+  Xerr_diag = apply(Xerr, 1, function(x) { diag(as.matrix(x^2)) })
   #} else {
   #  Xerr_diag = diag(as.matrix(Xerr)^2)  
   #}
@@ -198,13 +198,12 @@ relativeRiskCI<-function(psp, by=c('endoscopy','sample'), verbose=T) {
   
   preds = full_join(psp$per.endo, psp$per.endo.error, by='Endoscopy')
   if (riskBy == 'Sample') 
-    preds = full_join(psp$per.sample, psp$per.sample.error, by='Sample')
+    preds = full_join(psp$per.sample, psp$per.sample.error, by=c('Sample', 'Endoscopy'))
 
   low = (preds$`Relative Risk`-preds$Error)
   high = (preds$`Relative Risk`+preds$Error)
   
-  preds = add_column(preds, 'CI.RR.low'=low,
-                     'CI.RR.high'=high)
+  preds = add_column(preds, 'CI.RR.low'=low,'CI.RR.high'=high)
 
   return(preds)
 }
@@ -306,14 +305,20 @@ adjustRisk <- function(brr, offset=c('mean','max','min'), by=c('endoscopy','samp
 #' Get predictions from the model
 #' @name predictions
 #' @param BarrettsRiskRx object REQ
+#' @param c(sample, endo)
 #' @return predictions data frame
 #'
 #' @author skillcoyne
 #' @export
-predictions<-function(brr) {
+predictions<-function(brr, func=c('sample','endoscopy')) {
   if (class(brr)[1] != 'BarrettsRiskRx')
     stop("BarrettsRiskRx object missing")
-  brr$per.endo
+  func = match.arg(func)
+  
+  if (grepl(func, 'sample'))
+    return(brr$per.sample)
+  if (grepl(func, 'endoscopy'))
+    return(brr$per.endo)
 }
 
 #' Times per sample are determined by the order of the sample as given by the demoFile, or by the order of the samples in the dataset.
@@ -407,10 +412,11 @@ rx<-function(brr, by=c('endoscopy','sample')) {
     message(paste0("Evaluating the ",func," risk per endoscopy"))
   
   if (func == 'max') {
-    predDf = predDf %>% group_by(Endoscopy) %>% dplyr::mutate('n.samples'=length(Endoscopy),'Samples'=paste(Sample,collapse=',')) %>% dplyr::summarise_all('max') %>% select(-matches('^Sample$'))
+    predDf = predDf %>% group_by(Endoscopy) %>% dplyr::mutate('n.samples'=length(Endoscopy),'Samples'=paste(Sample,collapse=',')) %>% 
+      dplyr::summarise_if(is.numeric, list(max)) %>% dplyr::select(-matches('^Sample$'))
   } else {
-    predDf = full_join(predDf %>% group_by(Endoscopy) %>% dplyr::mutate('n.samples'=length(Endoscopy), 'Samples'=paste(Sample,collapse=',')) %>%  select( -matches('Sample|Prob|Relative')) %>% dplyr::summarise_all('max'),
-      predDf %>% select( matches('Endo|Prob|Relative')) %>% group_by(Endoscopy)  %>% dplyr::summarise_all('mean'), by='Endoscopy')
+    predDf = predDf %>% group_by(Endoscopy) %>% dplyr::mutate('n.samples'=length(Endoscopy), 'Samples'=paste(Sample,collapse=',')) %>%  
+        dplyr::summarise_if(is.numeric, list(mean))
   }
 
   return(predDf)

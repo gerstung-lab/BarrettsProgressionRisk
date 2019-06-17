@@ -122,11 +122,13 @@ loadSampleInformation<-function(samples, path=c('NDBE','ID','LGD','HGD','IMC','O
   endo.date<-function(endo) {
     if (is.character(endo)) {
       strings = unlist(strsplit(endo, '-|/'))
-      
       sep = ifelse(grepl("-", endo), "-", "/")
       dates = ifelse(as.integer(strings[1]) > 1900, paste(c("%Y", "%m", "%d"), collapse = sep), paste(c("%d", "%m", "%Y"), collapse = sep))
       parse_date(endo, format=dates)
-    } else {
+    } else if (is.numeric(endo)) {
+      #def = as.Date('2001/01/01')
+      return(endo)
+    } else { 
       as.Date(endo)
     }
   }
@@ -233,10 +235,16 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=NULL, min.probes=67
   }
   
   smps = intersect(info$Sample, colnames(fit.data)[countCols])
-  if (length(smps) != length(info$Sample)) {
+  if (length(smps) <= 0)
+    stop(paste0('No matching samples in SampleInformation object and data files. Stopping.'))
+  
+  if ( (length(smps) != length(info$Sample)) | length(countCols) != length(info$Sample) ) {
     warning(paste0("SampleInformation object and fit/raw data do not have the same samples. Using only samples from SampleInformation (n=", length(smps), ")."))
     fit.data = fit.data[,c(grep('loc|feat|chr|start|end', colnames(fit.data),value=T), smps) ]
     raw.data = raw.data[,c(grep('loc|feat|chr|start|end', colnames(raw.data),value=T), smps) ]
+    
+    countCols = countCols[which(colnames(fit.data)[countCols] %in% smps)]
+    
   }
 
   prepped = .prepRawSWGS(raw.data,fit.data,blacklist,logTransform)
@@ -271,22 +279,29 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=NULL, min.probes=67
   if (verbose) message(paste(coverage, 'of the genome covered by segments.'))
   
   # --- Plot segmented data
-  plist = list()
-  fit.data = prepped$fit.data
-  good.bins = prepped$good.bins
-  window.depths.standardised = prepped$window.depths.standardised
-  if (verbose) message('Plotting segmented data.')
-  for(col in which(!is.na(sdevs))) {
-    p = .plotSegmentedGenome(fitted = fit.data[good.bins,c(1:4,4+col)], segmented = res[,c(1:5,5+col)], window.depths.std = window.depths.standardised[good.bins,col,drop=F]) + labs(title=colnames(res)[5+col])
-
-    med = median(res[,5+col])
-    std = sd(res[,5+col])*2
-    p = p + geom_hline(yintercept = c(med-std,med+std), color='grey')
-
-    plist[[colnames(res)[5+col]]] = p
-  }
+  plist = tryCatch({
+    plist = list()
+    fit.data = prepped$fit.data
+    good.bins = prepped$good.bins
+    window.depths.standardised = prepped$window.depths.standardised
+    if (verbose) message('Plotting segmented data.')
+    for(col in which(!is.na(sdevs))) {
+      p = .plotSegmentedGenome(fitted = fit.data[good.bins,c(1:4,4+col)], segmented = res[,c(1:5,5+col)], window.depths.std = window.depths.standardised[good.bins,col,drop=F]) + labs(title=colnames(res)[5+col])
+  
+      med = median(res[,5+col])
+      std = sd(res[,5+col])*2
+      p = p + geom_hline(yintercept = c(med-std,med+std), color='grey')
+  
+      plist[[colnames(res)[5+col]]] = p
+    }
+    plist
+  }, error = function(e) {
+    warning(paste0("Failed to plot segments: ", e))
+    NULL
+  })
 
   # Get mean(var(MAD(segments))) per sample
+  if (verbose) message('Calculating sample residual variance.')
   pvr = .per.sample.residual.variance(resids)
   digits = length(unlist((strsplit(unlist(strsplit(as.character(cutoff), '\\.'))[2], ''))))
   pvr = pvr %>% mutate_at(vars(contains('MAD')), list(round), digits)
@@ -403,7 +418,8 @@ tileSegments<-function(swgsObj, size=5e6, verbose=T) {
     }
   }
 
-  message(paste("Mean number of CN segments per genome bin:", round(mean(meanSegs, na.rm=T), 2), "median:", round(median(meanSegs, na.rm=T), 2)))
+  if (verbose)
+    message(paste("Mean number of CN segments per genome bin:", round(mean(meanSegs, na.rm=T), 2), "median:", round(median(meanSegs, na.rm=T), 2)))
 
   rownames(mergedDf) = paste(mergedDf$chr, ':', mergedDf$start, '-', mergedDf$end, sep='')
   rownames(errorDf) = paste(errorDf$chr, ':', errorDf$start, '-', errorDf$end, sep='')
@@ -522,7 +538,7 @@ tileSegments<-function(swgsObj, size=5e6, verbose=T) {
 }
 
 # preps data for segmentation
-.prepRawSWGS<-function(raw.data,fit.data,blacklist, logTransform=F) {
+.prepRawSWGS<-function(raw.data,fit.data,blacklist, logTransform=F, verbose=F) {
   if (ncol(blacklist) < 3)
     stop('Blacklisted regions missing or incorrectly formatted.\nExpected columnes: chromosome start end')
 
@@ -560,7 +576,7 @@ tileSegments<-function(swgsObj, size=5e6, verbose=T) {
     plotlist[[colnames(fit.data)[col]]] = p
   }
   
-  message(paste(nrow(blacklist), "genomic regions in the exclusion list."))
+  if (verbose) message(paste(nrow(blacklist), "genomic regions in the exclusion list."))
 
   fit.data$in.blacklist = F
   for(r in 1:nrow(blacklist)) {
@@ -568,7 +584,7 @@ tileSegments<-function(swgsObj, size=5e6, verbose=T) {
                              fit.data$start >= blacklist$start[r] &
                              fit.data$end <= blacklist$end[r] ] = T
   }
-  message(paste("# blacklisted probes = ",sum(fit.data$in.blacklist), ' (',round(sum(fit.data$in.blacklist)/nrow(fit.data),2)*100,'%)',sep=""))
+  if (verbose) message(paste("# blacklisted probes = ",sum(fit.data$in.blacklist), ' (',round(sum(fit.data$in.blacklist)/nrow(fit.data),2)*100,'%)',sep=""))
 
   if (sum(fit.data$in.blacklist) <= 0)
     warning("No probes excluded from the blacklist.")
