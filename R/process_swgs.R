@@ -359,9 +359,13 @@ tileSegments<-function(swgsObj, size=5e6, verbose=T) {
     stop("Size must be numeric, or 'arms'")
 
   data = swgsObj$seg.vals
-  ## TODO: bug -- when no samples have passed this fails as there's no proper error handling here...FIX THIS NOW
+  failed = sampleResiduals(swgsObj) %>% dplyr::filter(!Pass)
+  
+  if ( nrow(failed) == nrow(sampleResiduals(swgsObj) ) )
+    stop('All samples failed QC, no data available for prediction.')
+
   resids = swgsObj$segment.residual.MSE[as.character(subset(swgsObj$residuals, Pass)$sample)] 
-  if (!is.tibble(data)) data = as_tibble(data)
+  if (!is_tibble(data)) data = as_tibble(data)
   
   #mse = mse[,intersect(colnames(data), colnames(mse))]
   

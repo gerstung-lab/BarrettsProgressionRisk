@@ -141,7 +141,9 @@ predictRiskFromSegments<-function(swgsObj, verbose=T) {
   per.sample.preds = full_join(tibble('Sample'=rownames(probs), 
                                       'Probability'=round(probs[,1],2), 
                                       'Relative Risk'=RR[,1],
-                                      'Risk'=sapply(probs[,1], .risk)), swgsObj$sample.info, by='Sample')
+                                      'Risk'=sapply(probs[,1], .risk)), 
+                               swgsObj$sample.info %>% dplyr::filter(Sample %in% as.character(sampleResiduals(swgsObj) %>% dplyr::filter(Pass) %>% dplyr::select(sample) %>% pull) ), 
+                               by='Sample')
   
   per.endo.preds = .setUpRxTablePerEndo(per.sample.preds, 'max', verbose) %>% rowwise() %>% mutate( Risk=.risk(Probability))
   perEndoError = .setUpRxTablePerEndo(perSampleError, 'max', F) %>% select('Endoscopy','Error')
