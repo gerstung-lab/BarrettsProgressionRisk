@@ -81,21 +81,29 @@ predictRisk<-function(info, path, raw.file.grep='raw.*read', corrected.file.grep
 #' Get the per-sample residuals calculated from the segmentation phase.
 #' @name predictRiskFromSegments
 #' @param SegmentedSWGS object
+#' @param glmnet model for prediction (Default uses internal model)
+#' @param s lambda value for prediction (Default uses internal model)
+#' @param size Segment size (Default 5e6)
 #' @return Predict segmented data using included model
 #'
 #' @author skillcoyne
 #' @export
-predictRiskFromSegments<-function(swgsObj, verbose=T) {
-  if (class(swgsObj)[1] != 'SegmentedSWGS')
+predictRiskFromSegments<-function(obj, model=fitV, s=lambda, tile.size=5e6, verbose=T) {
+  if (class(obj)[1] != 'SegmentedSWGS')
     stop("SegmentedSWGS object missing")
+  
+    if (nrow(sampleResiduals(obj)) == nrow(sampleResiduals(obj) %>% dplyr::filter(!Pass))) {
+      warning('No samples passed QC, no predictions can be made.')
+      return(NULL)
+    }
   
     # Tile, scale, then merge segmented values into 5Mb and arm-length windows across the genome.
     mergedDf = tryCatch({
-      segtiles = tileSegments(swgsObj, size=5e6,verbose=verbose)
+      segtiles = tileSegments(obj, size=tile.size,verbose=verbose)
       for (i in 1:ncol(segtiles$tiles))
         segtiles$tiles[,i] = unit.var(segtiles$tiles[,i], z.mean[i], z.sd[i])
       
-      armtiles = tileSegments(swgsObj, size='arms',verbose=verbose)
+      armtiles = tileSegments(obj, size='arms',verbose=verbose)
       for (i in 1:ncol(armtiles$tiles))
         armtiles$tiles[,i] = unit.var(armtiles$tiles[,i], z.arms.mean[i], z.arms.sd[i])
       
@@ -132,23 +140,23 @@ predictRiskFromSegments<-function(swgsObj, verbose=T) {
   perSampleError = sqrt( Var_rr )
   perSampleError = tibble('Sample'=names(perSampleError),'Error'=perSampleError)
   
-  perSampleError = left_join(perSampleError, swgsObj$sample.info, by='Sample') %>% select('Sample','Error','Endoscopy')
+  perSampleError = left_join(perSampleError, obj$sample.info, by='Sample') %>% dplyr::select('Sample','Error','Endoscopy')
   
   # Predict and generate absolute probabilities
-  RR = predict(fitV, newx=sparsed_test_data, s=lambda, type='link')
+  RR = predict(model, newx=sparsed_test_data, s=s, type='link')
   probs = pi.hat(RR)
   
   per.sample.preds = full_join(tibble('Sample'=rownames(probs), 
                                       'Probability'=round(probs[,1],2), 
                                       'Relative Risk'=RR[,1],
                                       'Risk'=sapply(probs[,1], .risk)), 
-                               swgsObj$sample.info %>% dplyr::filter(Sample %in% as.character(sampleResiduals(swgsObj) %>% dplyr::filter(Pass) %>% dplyr::select(sample) %>% pull) ), 
+                               obj$sample.info %>% dplyr::filter(Sample %in% as.character(sampleResiduals(obj) %>% dplyr::filter(Pass) %>% dplyr::select(sample) %>% pull) ), 
                                by='Sample')
   
   per.endo.preds = .setUpRxTablePerEndo(per.sample.preds, 'max', verbose) %>% rowwise() %>% mutate( Risk=.risk(Probability))
-  perEndoError = .setUpRxTablePerEndo(perSampleError, 'max', F) %>% select('Endoscopy','Error')
+  perEndoError = .setUpRxTablePerEndo(perSampleError, 'max', F) %>% dplyr::select('Endoscopy','Error')
   
-  psp = list('per.endo'=per.endo.preds, 'per.sample'=per.sample.preds, 'segmented'=swgsObj, 'per.sample.error'=perSampleError, 'per.endo.error'=perEndoError, 'tiles'=mergedDf)
+  psp = list('per.endo'=per.endo.preds, 'per.sample'=per.sample.preds, 'segmented'=obj, 'per.sample.error'=perSampleError, 'per.endo.error'=perEndoError, 'tiles'=mergedDf)
   class(psp) <- c('BarrettsRiskRx', class(psp))
   return(psp)
 }

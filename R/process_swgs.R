@@ -220,13 +220,17 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=NULL, min.probes=67
 
   chr.info = chrInfo(build=build)
   
-  chrCol = grep('chr',colnames(fit.data))
-  startCol = grep('start',colnames(fit.data))
-  fit.data[[chrCol]] = factor(fit.data[[chrCol]], levels=levels(chr.info$chr), ordered=T)
-  raw.data[[chrCol]] = factor(raw.data[[chrCol]], levels=levels(chr.info$chr), ordered=T)
+  #chrCol = grep('chr',colnames(fit.data))
+  #startCol = grep('start',colnames(fit.data))
+  #fit.data[[chrCol]] = factor(fit.data[[chrCol]], levels=levels(chr.info$chr), ordered=T)
   
-  fit.data = fit.data %>% dplyr::arrange(fit.data[[chrCol]], fit.data[[startCol]])
-  raw.data = raw.data %>% dplyr::arrange(raw.data[[chrCol]], raw.data[[startCol]])
+  fit.data =  fit.data %>% dplyr::mutate_at(vars(matches('chr')), list(factor),levels=levels(chr.info$chr), ordered=T) %>% dplyr::arrange_at( vars(matches('chr'), matches('start')), list() )
+  raw.data = raw.data %>% mutate_at(vars(matches('chr')), list(factor),levels=levels(chr.info$chr), ordered=T) %>% dplyr::arrange_at( vars(matches('chr'), matches('start')), list() )
+  
+  #raw.data[[chrCol]] = factor(raw.data[[chrCol]], levels=levels(chr.info$chr), ordered=T)
+  
+  #fit.data = fit.data %>% dplyr::arrange(fit.data[[chrCol]], fit.data[[startCol]])
+  #raw.data = raw.data %>% dplyr::arrange(raw.data[[chrCol]], raw.data[[startCol]])
     
   countCols = grep('loc|feat|chr|start|end', colnames(fit.data), invert=T)
   if (length(countCols) == 1) {
@@ -244,7 +248,6 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=NULL, min.probes=67
     raw.data = raw.data[,c(grep('loc|feat|chr|start|end', colnames(raw.data),value=T), smps) ]
     
     countCols = countCols[which(colnames(fit.data)[countCols] %in% smps)]
-    
   }
 
   prepped = .prepRawSWGS(raw.data,fit.data,blacklist,logTransform)
