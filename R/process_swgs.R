@@ -527,15 +527,15 @@ tileSegments<-function(swgsObj, size=5e6, verbose=T) {
 
   var.resids = lapply(segment.residuals, function(sample) {
     do.call(rbind.data.frame, lapply(sample, function(y) {
-      cbind('varMAD'=var(y[y<mad(y) & y>-mad(y)]))
+      cbind('varMAD'=var(y[y<mad(y,na.rm=T) & y>-mad(y,na.rm=T)]))
     }))
   })
   for (sample in names(var.resids)) {
     n.segs = length(segment.residuals[[sample]])
 
     msd = var.resids[[sample]] %>% dplyr::summarise_all(funs(median,sd) )
-    q1 = var.resids[[sample]] %>% dplyr::summarise_all(funs(Q1=quantile),probs=0.25 )
-    q3 = var.resids[[sample]] %>% dplyr::summarise_all(funs(Q3=quantile),probs=0.75 )
+    q1 = var.resids[[sample]] %>% dplyr::summarise_all(funs(Q1=quantile),probs=0.25,na.rm=T )
+    q3 = var.resids[[sample]] %>% dplyr::summarise_all(funs(Q3=quantile),probs=0.75,na.rm=T )
 
     res.variance = rbind(res.variance, cbind(sample,msd,q1,q3,n.segs))
   }
