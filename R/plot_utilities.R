@@ -142,20 +142,22 @@ showModelPredictions<-function(type='P') {
 
 #' Per sample over time tile risk plot
 #' @name patientRiskTilesPlot
-#' @param type BarrettsRiskRx object
+#' @param brr BarrettsRiskRx object or tibble with Risk and Endoscopy columns
 #' @return ggplot object
 #'
 #' @author skillcoyne
 #' @export
 patientRiskTilesPlot<-function(brr) {
-  if (length(which(class(brr) %in% c('BarrettsRiskRx'))) <= 0)
-    stop("BarrettsRiskRx required")
-
-  preds = brr$per.sample
-  
-  if ('GEJ.Distance' %in% colnames(preds)) {
-    preds$GEJ.Distance = fct_rev(factor(preds$GEJ.Distance, ordered=T))
+  if (length(which(class(brr) %in% c('BarrettsRiskRx'))) > 0) {
+    preds = brr$per.sample
   } else {
+    preds = brr
+    if (length(which(colnames(preds) %in% c('Endoscopy', 'Risk'))) < 2) stop("BarrettsRiskRx object required, or tibble with Endoscopy (numeric/date) and Risk (Low,Moderate,High) columns")
+  }
+
+  if ('GEJ.Distance' %in% colnames(preds) & !is.factor(preds$GEJ.Distance)) {
+    preds$GEJ.Distance = fct_rev(factor(preds$GEJ.Distance, ordered=T))
+  } else if (!'GEJ.Distance' %in% colnames(preds)) {
     preds$GEJ.Distance = 1
   }
   preds$Endoscopy = factor(preds$Endoscopy, ordered=T)

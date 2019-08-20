@@ -84,11 +84,17 @@ predictRisk<-function(info, path, raw.file.grep='raw.*read', corrected.file.grep
 #' @param glmnet model for prediction (Default uses internal model)
 #' @param s lambda value for prediction (Default uses internal model)
 #' @param size Segment size (Default 5e6)
+#' @param tile.mean
+#' @param tile.sd
+#' @param arms.mean
+#' @param arms.sd
+#' @param cx.mean
+#' @param sd.cx
 #' @return Predict segmented data using included model
 #'
 #' @author skillcoyne
 #' @export
-predictRiskFromSegments<-function(obj, model=fitV, s=lambda, tile.size=5e6, verbose=T) {
+predictRiskFromSegments<-function(obj, model=fitV, s=lambda, tile.size=5e6, tile.mean=z.mean, arms.mean=z.arms.mean, tile.sd=z.sd, arms.sd=z.arms.sd, cx.mean=mn.cx, cx.sd=sd.cx, verbose=T) {
   if (class(obj)[1] != 'SegmentedSWGS')
     stop("SegmentedSWGS object missing")
   
@@ -97,17 +103,24 @@ predictRiskFromSegments<-function(obj, model=fitV, s=lambda, tile.size=5e6, verb
       return(NULL)
     }
   
+  if (verbose) 
+    message( paste('Using internal glmnet model: ', fitV$nobs == model$nobs)  )
+  
+  if (fitV$nobs != model$nobs & length(which(z.mean == tile.mean) != length(z.mean))) 
+    stop('Using external glmnet model. Tile and arm mean/sd values required to correctly mean adjust tiled data.')
+
+
     # Tile, scale, then merge segmented values into 5Mb and arm-length windows across the genome.
     mergedDf = tryCatch({
       segtiles = tileSegments(obj, size=tile.size,verbose=verbose)
       for (i in 1:ncol(segtiles$tiles))
-        segtiles$tiles[,i] = unit.var(segtiles$tiles[,i], z.mean[i], z.sd[i])
+        segtiles$tiles[,i] = unit.var(segtiles$tiles[,i], tile.mean[i], tile.sd[i])
       
       armtiles = tileSegments(obj, size='arms',verbose=verbose)
       for (i in 1:ncol(armtiles$tiles))
-        armtiles$tiles[,i] = unit.var(armtiles$tiles[,i], z.arms.mean[i], z.arms.sd[i])
+        armtiles$tiles[,i] = unit.var(armtiles$tiles[,i], arms.mean[i], arms.sd[i])
       
-      cx.score = unit.var(scoreCX(segtiles$tiles,1), mn.cx, sd.cx)
+      cx.score = unit.var(scoreCX(segtiles$tiles,1), cx.mean, cx.sd)
       mergedDf = subtractArms(segtiles$tiles, armtiles$tiles)
       
       cbind(mergedDf, 'cx'=cx.score)
