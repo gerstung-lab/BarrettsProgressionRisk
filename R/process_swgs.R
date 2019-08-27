@@ -220,18 +220,9 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=NULL, min.probes=67
 
   chr.info = chrInfo(build=build)
   
-  #chrCol = grep('chr',colnames(fit.data))
-  #startCol = grep('start',colnames(fit.data))
-  #fit.data[[chrCol]] = factor(fit.data[[chrCol]], levels=levels(chr.info$chr), ordered=T)
-  
   fit.data =  fit.data %>% dplyr::mutate_at(vars(matches('chr')), list(factor),levels=levels(chr.info$chr), ordered=T) %>% dplyr::arrange_at( vars(matches('chr'), matches('start')), list() )
   raw.data = raw.data %>% mutate_at(vars(matches('chr')), list(factor),levels=levels(chr.info$chr), ordered=T) %>% dplyr::arrange_at( vars(matches('chr'), matches('start')), list() )
   
-  #raw.data[[chrCol]] = factor(raw.data[[chrCol]], levels=levels(chr.info$chr), ordered=T)
-  
-  #fit.data = fit.data %>% dplyr::arrange(fit.data[[chrCol]], fit.data[[startCol]])
-  #raw.data = raw.data %>% dplyr::arrange(raw.data[[chrCol]], raw.data[[startCol]])
-    
   countCols = grep('loc|feat|chr|start|end', colnames(fit.data), invert=T)
   if (length(countCols) == 1) {
     colnames(raw.data)[countCols] = info$Sample
@@ -545,18 +536,23 @@ tileSegments<-function(swgsObj, size=5e6, verbose=T) {
 }
 
 # preps data for segmentation
-.prepRawSWGS<-function(raw.data,fit.data,blacklist, logTransform=F, verbose=F) {
+.prepRawSWGS<-function(raw.data,fit.data,blacklist,logTransform=F,plot=T,verbose=F) {
   if (ncol(blacklist) < 3)
     stop('Blacklisted regions missing or incorrectly formatted.\nExpected columnes: chromosome start end')
 
-  countCols = grep('loc|feat|chr|start|end', colnames(fit.data), invert=T)
-  infoCols = grep('loc|feat|chr|start|end', colnames(fit.data))
-
   rows = intersect(fit.data[[1]], raw.data[[1]])
-  #rows = which(fit.data[[1]] %in% raw.data[[1]])
   fit.data = fit.data[which(fit.data[[1]] %in% rows),]
   raw.data = raw.data[which(raw.data[[1]] %in% rows),]
 
+  sortedCountCols = intersect(colnames(raw.data), colnames(fit.data))
+
+  raw.data = raw.data %>% select(matches('loc|feat|chr|start|end'), sortedCountCols)
+  fit.data = fit.data %>% select(matches('loc|feat|chr|start|end'), sortedCountCols)
+  
+  countCols = grep('loc|feat|chr|start|end', colnames(fit.data), invert=T)
+  infoCols = grep('loc|feat|chr|start|end', colnames(fit.data))
+
+  # raw counts adjusted by the fitted
   window.depths = as.vector(as.matrix(raw.data[,countCols]))/as.vector(as.matrix(fit.data[,countCols]))
 
   # QDNAseq does this in 'correctBins' but we don't use that method so added here
@@ -565,22 +561,22 @@ tileSegments<-function(swgsObj, size=5e6, verbose=T) {
 
   window.depths = matrix(window.depths, ncol=length(countCols))
 
-  chr.info = chrInfo()
-  plist = list()
-  
-  df = cbind(fit.data[,infoCols], window.depths)
-  colnames(df)[-infoCols] = colnames(fit.data)[countCols]
-  df = base::merge(df, chr.info[,c('chr','chr.length')], by.x='chrom',by.y='chr',all.x=T)
-
   plotlist = list()
-  for (col in countCols) {
-    tmp = reshape::melt(df[,c(infoCols, col)], measure.vars=colnames(fit.data)[col])
-    p = ggplot(tmp, aes(x=1:chr.length)) + ylim(c(0, quantile(tmp$value, probs=0.75, na.rm=T)*2)) +
-      facet_grid(~chrom, space='free', scales='free') +
-      geom_point( aes(start, value), color='darkred', alpha=.4) +  
-      labs(title=colnames(fit.data[col]), x='Chromosomes', y="corrected depth/15KB") + 
-      theme_bw() + theme(axis.text.x=element_blank(), panel.spacing.x=unit(0,'lines'))
-    plotlist[[colnames(fit.data)[col]]] = p
+  if (plot) {
+    chr.info = chrInfo()
+    
+    df = cbind(fit.data[,infoCols], window.depths)
+    colnames(df)[-infoCols] = colnames(fit.data)[countCols]
+    df = base::merge(df, chr.info[,c('chr','chr.length')], by.x='chrom',by.y='chr',all.x=T)
+    for (col in countCols) {
+      tmp = reshape::melt(df[,c(infoCols, col)], measure.vars=colnames(fit.data)[col])
+      p = ggplot(tmp, aes(x=1:chr.length)) + ylim(c(0, quantile(tmp$value, probs=0.75, na.rm=T)*2)) +
+        facet_grid(~chrom, space='free', scales='free') +
+        geom_point( aes(start, value), color='darkred', alpha=.4) +  
+        labs(title=colnames(fit.data[col]), x='Chromosomes', y="corrected depth/15KB") + 
+        theme_bw() + theme(axis.text.x=element_blank(), panel.spacing.x=unit(0,'lines'))
+      plotlist[[colnames(fit.data)[col]]] = p
+    }
   }
   
   if (verbose) message(paste(nrow(blacklist), "genomic regions in the exclusion list."))
@@ -593,11 +589,9 @@ tileSegments<-function(swgsObj, size=5e6, verbose=T) {
   }
   if (verbose) message(paste("# blacklisted probes = ",sum(fit.data$in.blacklist), ' (',round(sum(fit.data$in.blacklist)/nrow(fit.data),2)*100,'%)',sep=""))
 
-  if (sum(fit.data$in.blacklist) <= 0)
-    warning("No probes excluded from the blacklist.")
+  if (sum(fit.data$in.blacklist) <= 0) warning("No probes excluded from the blacklist.")
 
-  if (length(countCols) == 1)
-    window.depths = as.data.frame(window.depths)
+  if (length(countCols) == 1) window.depths = as.data.frame(window.depths)
 
   window.depths.standardised = as.data.frame(window.depths[which(!fit.data$in.blacklist),])
   if (logTransform)
@@ -611,8 +605,8 @@ tileSegments<-function(swgsObj, size=5e6, verbose=T) {
 
   good.bins = which(!is.na(rowSums(as.data.frame(window.depths.standardised[,!is.na(sdevs)]))))
 
-  data = cbind(fit.data[good.bins,c('chrom','start')],window.depths.standardised[good.bins,!is.na(sdevs)])
-  colnames(data)[-c(1:2)] = colnames(raw.data)[countCols]
+  data = cbind(fit.data[good.bins,c('chrom','start')], window.depths.standardised[good.bins,!is.na(sdevs)])
+  colnames(data)[-c(1:2)] = colnames(raw.data)[countCols[!is.na(sdevs)]]
 
   return(list('data'=data,'sdevs'=sdevs, 'good.bins'=good.bins, 'window.depths.standardised'=window.depths.standardised, 'fit.data'=fit.data, 'cv.plot'=plotlist))
 }

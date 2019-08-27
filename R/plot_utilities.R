@@ -272,11 +272,13 @@ copyNumberMountainPlot<-function(brr,annotate=T, legend=T) {
       
     
     if (!annotate) {
-      p = p + geom_rect(aes(xmin=1,xmax=chr.length,ymin=-1,ymax=1),fill='grey88',alpha=0.03) + geom_rect(aes(xmin=start,xmax=end,ymin=0, ymax=value, fill=CN)) + 
+      p = p + geom_rect(aes(xmin=1,xmax=chr.length,ymin=-1,ymax=1),fill='grey88',alpha=0.03) + 
+        geom_rect(aes(xmin=start,xmax=end,ymin=0, ymax=value, fill=CN)) + 
         scale_fill_manual(values=pal, limits=c('loss','norm','gain'), labels=c('Loss','Normal','Gain'), name='Relative CNA')
     } else {
       p = p + geom_rect(aes(xmin=start,xmax=end,ymin=0,ymax=value, fill=annotate)) + 
         geom_rect(data=arms,aes(xmin=start,xmax=end,ymin=0,ymax=value,fill=annotate),alpha=0.5) +
+        geom_rect(aes(xmin=1,xmax=chr.length,ymin=-1,ymax=1),fill='grey88',alpha=0.03) +
         scale_fill_manual(values=pal, limits=c('loss','norm','gain'), labels=c('Loss','Normal','Gain'), name='Model Features')
     }
     p = p + labs(x='Chromosomes', y='Relative CNA',title=sample) +
