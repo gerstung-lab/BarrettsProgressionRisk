@@ -228,7 +228,7 @@ copyNumberMountainPlot<-function(brr,annotate=T, legend=T) {
   samples = rownames(brr$tiles)
   locs = get.loc(brr$tiles[,-ncol(brr$tiles),drop=F])
 
-  cvdf = bind_cols(get.loc(t(coef_cv_RR)),as_tibble(coef_cv_RR))
+  cvdf = bind_cols(get.loc(t(brr$be.model$cvRR)),as_tibble(brr$be.model$cvRR))
   
   plist = list()
   for (sample in samples) {
@@ -267,10 +267,8 @@ copyNumberMountainPlot<-function(brr,annotate=T, legend=T) {
     arms$CN = factor(arms$CN, levels = c('loss','norm','gain'))
     arms$annotate = factor(arms$annotate, levels = c('loss','norm','gain'))
     
-      
     p = ggplot(segs, aes(x=chr.length)) + facet_grid(~chr, scales='free_x', space='free_x') 
-      
-    
+
     if (!annotate) {
       p = p + geom_rect(aes(xmin=1,xmax=chr.length,ymin=-1,ymax=1),fill='grey88',alpha=0.03) + 
         geom_rect(aes(xmin=start,xmax=end,ymin=0, ymax=value, fill=CN)) + 

@@ -180,7 +180,7 @@ predictRiskFromSegments<-function(obj, be.model = NULL, verbose=T) {
   per.endo.preds = .setUpRxTablePerEndo(per.sample.preds, 'max', verbose) %>% rowwise() %>% mutate( Risk=.risk(Probability,be.model))
   perEndoError = .setUpRxTablePerEndo(perSampleError, 'max', F) %>% dplyr::select('Endoscopy','Error')
   
-  psp = list('per.endo'=per.endo.preds, 'per.sample'=per.sample.preds, 'segmented'=obj, 'per.sample.error'=perSampleError, 'per.endo.error'=perEndoError, 'tiles'=mergedDf)
+  psp = list('per.endo'=per.endo.preds, 'per.sample'=per.sample.preds, 'segmented'=obj, 'per.sample.error'=perSampleError, 'per.endo.error'=perEndoError, 'tiles'=mergedDf, 'be.fit' = be.model)
   class(psp) <- c('BarrettsRiskRx', class(psp))
   return(psp)
 }
