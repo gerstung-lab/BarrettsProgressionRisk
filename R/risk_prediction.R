@@ -1,8 +1,9 @@
 
 be.model.fit<-function(model, s, tile.size, 
                        tile.mean, arms.mean, tile.sd, arms.sd, 
-                       cx.mean, cx.sd, per.pt.nzcoefs, cvRR, pconf) {
+                       cx.mean, cx.sd, per.pt.nzcoefs, cvRR, pconf = NULL) {
 
+  if (is.null(pconf)) pconf = pred.confidence
   be.model <- list(
     fit = model, lambda = s, tile.size = tile.size,
     tile.mean = tile.mean, arms.mean = arms.mean, tile.sd = tile.sd,
@@ -11,7 +12,6 @@ be.model.fit<-function(model, s, tile.size,
     pred.confidence = pconf
   )
   
-  if (is.null(pconf)) be.model$pred.confidence = pred.confidence
 
   class(be.model) <- c('BEModel', class(be.model))
     
