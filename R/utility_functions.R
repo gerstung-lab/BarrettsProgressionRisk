@@ -9,6 +9,12 @@ cvRR<-function(df, coefs) {
   })
 }
 
+#TBD
+model.pred.confidence<-function(df) {
+  
+}
+
+
 
 # Gets a temp cache directory, not really used yet
 getcachedir<-function() {
