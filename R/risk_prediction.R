@@ -120,7 +120,7 @@ predictRiskFromSegments<-function(obj, be.model = NULL, verbose=T) {
   if (is.null(be.model)) {
     be.model = be.model.fit(model=fitV, s=lambda, tile.size=5e6, 
       tile.mean=z.mean, arms.mean=z.arms.mean, tile.sd=z.sd, arms.sd=z.arms.sd, 
-      cx.mean=mn.cx, cx.sd=sd.cx, per.pt.nzcoefs = nzcoefs, cvRR = coef_cv_RR, pred.confidence = pred.confidence)
+      cx.mean=mn.cx, cx.sd=sd.cx, per.pt.nzcoefs = nzcoefs, cvRR = coef_cv_RR, pconf = pred.confidence)
     message('Using internal glmnet model.')
   } else {
     warning("Using EXTERNAL glmnet model. Validation not provided.")
