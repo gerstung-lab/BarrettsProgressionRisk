@@ -1,7 +1,14 @@
 .titleCase<-function(x) {
   gsub("(^|[[:space:]])([[:alpha:]])", "\\1\\U\\2",x, perl=TRUE)
 }
-  
+
+
+cvRR<-function(df, coefs) {
+  apply( exp(t(df[, rownames(coefs)])*coefs[,1]), 1, function(x) {
+    sd(x)/mean(x)
+  })
+}
+
 
 # Gets a temp cache directory, not really used yet
 getcachedir<-function() {

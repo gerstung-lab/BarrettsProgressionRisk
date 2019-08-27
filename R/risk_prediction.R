@@ -1,12 +1,13 @@
 
 be.model.fit<-function(model, s, tile.size, 
                        tile.mean, arms.mean, tile.sd, arms.sd, 
-                       cx.mean, cx.sd, per.pt.nzcoefs, pred.confidence) {
+                       cx.mean, cx.sd, per.pt.nzcoefs, cvRR, pred.confidence) {
 
   be.model <- list(
     fit = model, lambda = s, tile.size = tile.size,
     tile.mean = tile.mean, arms.mean = arms.mean, tile.sd = tile.sd,
-    arms.sd = arms.sd, cx.mean = cx.mean,  cx.sd = cx.sd, nzcoefs = per.pt.nzcoefs,
+    arms.sd = arms.sd, cx.mean = cx.mean,  cx.sd = cx.sd, 
+    nzcoefs = per.pt.nzcoefs, cvRR = cvRR,
     pred.confidence = pred.confidence
   )
 
@@ -117,7 +118,7 @@ predictRiskFromSegments<-function(obj, be.model = NULL, verbose=T) {
   if (is.null(be.model)) {
     be.model = be.model.fit(model=fitV, s=lambda, tile.size=5e6, 
       tile.mean=z.mean, arms.mean=z.arms.mean, tile.sd=z.sd, arms.sd=z.arms.sd, 
-      cx.mean=mn.cx, cx.sd=sd.cx, per.pt.nzcoefs = nzcoefs, pred.confidence = pred.confidence)
+      cx.mean=mn.cx, cx.sd=sd.cx, per.pt.nzcoefs = nzcoefs, cvRR = coef_cv_RR, pred.confidence = pred.confidence)
     message('Using internal glmnet model.')
   } else {
     warning("Using EXTERNAL glmnet model. Validation not provided.")
