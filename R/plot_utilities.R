@@ -228,17 +228,21 @@ copyNumberMountainPlot<-function(brr,annotate=T, legend=T) {
   samples = rownames(brr$tiles)
   locs = get.loc(brr$tiles[,-ncol(brr$tiles),drop=F])
 
-  cvdf = bind_cols(get.loc(t(brr$be.fit$cvRR)),as_tibble(brr$be.fit$cvRR))
+  coefs =  as.matrix(coef(be.model$fit, be.model$lambda))
+  coefs = coefs[which(coefs != 0),][-1]
+  coefs = bind_cols(get.loc(t(coefs)), 'coef' = coefs)
+  
+  cvdf = bind_cols(get.loc(t(brr$be.fit$cvRR)), 'cvRR' = brr$be.fit$cvRR)
+  
+  cvdf = full_join(cvdf, coefs, by=c('chr','start','end'))
   
   plist = list()
   for (sample in samples) {
-    tb = as_tibble( matrix(t(brr$tiles[sample,-ncol(brr$tiles)]), ncol=1) )
-    colnames(tb) = sample
-  
-    df = bind_cols(locs, tb)
+    
+    df = bind_cols(locs,tibble('sample'=brr$tiles[sample, -ncol(brr$tiles)]))
 
-    melted = as_tibble(reshape2::melt(id.vars=c('chr','start','end'),df))
-    melted = as_tibble(left_join(left_join(melted,chr.info[,c('chr','chr.length')],by='chr'),cvdf, by=c('chr','start','end')))
+    melted = as_tibble(reshape2::melt(id.vars=c('chr','start','end'), df))
+    melted = as_tibble(left_join (left_join(melted,chr.info[,c('chr','chr.length')],by='chr'),cvdf, by=c('chr','start','end')) )
 
     arms = melted %>% filter(end-start > median(melted$end-melted$start)*2)
     segs = melted %>% filter(end-start <= median(melted$end-melted$start)*2)
