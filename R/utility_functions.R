@@ -141,14 +141,20 @@ medianFilter <- function(x,k){
 .bootstrap.coef.stderr<-function(be.model) {
   fitCoefs = as.data.frame(as.matrix(glmnet::coef.glmnet(be.model$fit, be.model$lambda)))[-1,,drop=F]
   fitCoefs = fitCoefs[which(fitCoefs != 0),,drop=F]
+
+  be.model$nzcoefs = purrr::map(be.model$nzcoefs, function(x) {
+    if (is_tibble(x)) return(x)
+    x %>% as_tibble(rownames = 'coef')
+  })
   
-  cfs = unique(unlist(sapply(be.model$nzcoefs, function(x) x[['coef']])))
+  cfs = unique(unlist(sapply(be.model$nzcoefs, function(x) x %>% dplyr::select(coef) )))
   loo.coefs = data.frame(matrix(ncol=0,nrow=length(cfs)))
   loo.coefs$coef = cfs
-  for (pt in names(nzcoefs)) {
-    loo.coefs = dplyr::full_join(loo.coefs, nzcoefs[[pt]], by='coef')
-  }
-  colnames(loo.coefs)[-1] = c(1:length(nzcoefs))
+
+  for (pt in names(nzcoefs)) 
+    loo.coefs = dplyr::full_join(loo.coefs, be.model$nzcoefs[[pt]], by='coef')
+  
+  colnames(loo.coefs)[-1] = c(1:length(be.model$nzcoefs))
   loo.coefs[is.na(loo.coefs)] = 0
   
   ch = tibble::as_tibble(fitCoefs, rownames='coef')

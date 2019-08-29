@@ -4,7 +4,7 @@
 \alias{predictRiskFromSegments}
 \title{Get the per-sample residuals calculated from the segmentation phase.}
 \usage{
-predictRiskFromSegments(swgsObj, verbose = T)
+predictRiskFromSegments(obj, be.model = NULL, verbose = T)
 }
 \arguments{
 \item{SegmentedSWGS}{object}

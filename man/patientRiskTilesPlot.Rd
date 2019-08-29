@@ -7,7 +7,7 @@
 patientRiskTilesPlot(brr)
 }
 \arguments{
-\item{type}{BarrettsRiskRx object}
+\item{brr}{BarrettsRiskRx object or tibble with Risk and Endoscopy columns}
 }
 \value{
 ggplot object

@@ -228,7 +228,7 @@ copyNumberMountainPlot<-function(brr,annotate=T, legend=T) {
   samples = rownames(brr$tiles)
   locs = get.loc(brr$tiles[,-ncol(brr$tiles),drop=F])
 
-  cvdf = bind_cols(get.loc(t(brr$be.model$cvRR)),as_tibble(brr$be.model$cvRR))
+  cvdf = bind_cols(get.loc(t(brr$be.fit$cvRR)),as_tibble(brr$be.fit$cvRR))
   
   plist = list()
   for (sample in samples) {

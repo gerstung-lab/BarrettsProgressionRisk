@@ -1,9 +1,13 @@
+require(tidyverse)
+
+
 
 be.model.fit<-function(model, s, tile.size, 
                        tile.mean, arms.mean, tile.sd, arms.sd, 
                        cx.mean, cx.sd, per.pt.nzcoefs, cvRR, pconf = NULL) {
 
   if (is.null(pconf)) pconf = pred.confidence
+  
   be.model <- list(
     fit = model, lambda = s, tile.size = tile.size,
     tile.mean = tile.mean, arms.mean = arms.mean, tile.sd = tile.sd,
