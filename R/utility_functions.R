@@ -151,7 +151,7 @@ medianFilter <- function(x,k){
   loo.coefs = data.frame(matrix(ncol=0,nrow=length(cfs)))
   loo.coefs$coef = cfs
 
-  for (pt in names(nzcoefs)) 
+  for (pt in names(be.model$nzcoefs)) 
     loo.coefs = dplyr::full_join(loo.coefs, be.model$nzcoefs[[pt]], by='coef')
   
   colnames(loo.coefs)[-1] = c(1:length(be.model$nzcoefs))
