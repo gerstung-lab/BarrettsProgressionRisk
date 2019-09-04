@@ -232,7 +232,7 @@ copyNumberMountainPlot<-function(brr,annotate=T, legend=T) {
   coefs = coefs[which(coefs != 0),][-1]
   coefs = bind_cols(get.loc(t(coefs)), 'coef' = coefs)
   
-  cvdf = bind_cols(get.loc(t(brr$be.fit$cvRR)), 'cvRR' = brr$be.fit$cvRR)
+  cvdf = bind_cols( get.loc(t(brr$be.fit$cvRR)), 'cvRR' = brr$be.fit$cvRR[,'cvRR'])
   
   cvdf = full_join(cvdf, coefs, by=c('chr','start','end'))
   
