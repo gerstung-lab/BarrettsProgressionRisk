@@ -199,24 +199,32 @@ patientEndoscopyPlot<-function(brr) {
 #' @name copyNumberMountainPlot
 #' @param type BarrettsRiskRx object
 #' @param annotate If true, only segments in the non-zero coefficients are highlighted (DEF=T)
+#' @param as plot or list of plots
 #' @return list of ggplot objects per sample
 #'
 #' @author skillcoyne
 #' @export
-copyNumberMountainPlot<-function(brr,annotate=T, legend=T) {
+copyNumberMountainPlot<-function(brr,annotate=T, legend=T,  as=c('plot','list')) {
   if (length(which(class(brr) %in% c('BarrettsRiskRx'))) <= 0)
     stop("BarrettsRiskRx required")
+  rettype = match.args(as)
   
   mp = .mountainPlots(brr,annotate)
-  
   ht = length(mp$plot.list)*2
   
-  p = do.call(gridExtra::arrangeGrob, (mp$plot.list))
-  
-  if (legend)
-    gridExtra::grid.arrange(p,gridExtra::arrangeGrob(mp$legend), heights=c(ht = length(mp$plot.list)*2,1), ncol=1)
-  else
-    gridExtra::grid.arrange(p, ncol=1)
+  if (as == 'list') {
+    plist = mp$plot.list
+    if (legend)
+      plist = lapply(mp$plot.list, function(p) gridExtra::arrangeGrob(p, mp$legend,  heights=c(ht = length(mp$plot.list)*2,1), ncol=1))
+    return( plist )
+  } else {
+    p = do.call(gridExtra::arrangeGrob, (mp$plot.list))
+    
+    if (legend)
+      return(gridExtra::grid.arrange(p,gridExtra::arrangeGrob(mp$legend), heights=c(ht = length(mp$plot.list)*2,1), ncol=1))
+    else
+      return(gridExtra::grid.arrange(p, ncol=1))
+  }
 }
 
 
