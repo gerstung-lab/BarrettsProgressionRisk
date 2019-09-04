@@ -195,18 +195,16 @@ subtractArms<-function(segments, arms) {
 #' @param min.probes minimum number of probes per segment DEF=67  (~1Mb)
 #' @param gamma2 gamma adjustment for pcf DEF=250
 #' @param cutoff is the residual value cutoff for QC DEF=0.015
+#' @param norm normalize pcf, DEF=T
 #' @param logTransform DEF=F
 #' @return list of objects:
 #' 'seg.vals'=segmented samples that have passed QC, 'residuals'=data frame of per-sample residuals, 'prepped.data'=adjusted raw values, 'seg.plots'=list of per-sample genome-wide plots, 'genome.coverage'=calculated genome coverage, 'failedQC'=segmented samples that have failed QC
 #'
 #' @author skillcoyne
 #' @export
-segmentRawData<-function(info, raw.data, fit.data, blacklist=NULL, min.probes=67, gamma2=250, cutoff=0.015, logTransform=F, cache.dir=getcachedir(), build='hg19', verbose=T) {
+segmentRawData<-function(info, raw.data, fit.data, blacklist=NULL, min.probes=67, gamma2=250, norm=T, cutoff=0.015, logTransform=F, cache.dir=getcachedir(), build='hg19', verbose=T) {
   if (!'SampleInformation' %in% class(info))
     stop("SampleInformation object from loadSampleInformation(...) required")
-
-  if (is.null(blacklist) | !is.data.frame(blacklist)) 
-    blacklist = readr::read_tsv(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), col_names=T, col_types='cii')  
 
   if (is.character(raw.data) & is.character(fit.data)) {
     raw.data = readr::read_tsv(raw.data, col_names=T, col_types = cols('chrom'=col_character()))
@@ -250,12 +248,12 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=NULL, min.probes=67
 
   if (ncol(data) < 4) { # Single sample
       if (verbose) message(paste("Segmenting single sample gamma=",round(gamma2*sdev,2)))
-      res = copynumber::pcf( data=data, gamma=gamma2*sdev, fast=F, verbose=verbose, return.est=F, assembly=build )
+      res = copynumber::pcf( data=data, gamma=gamma2*sdev, fast=F, verbose=verbose, return.est=F, assembly=build, normalize = norm )
       colnames(res)[grep('mean', colnames(res))] = colnames(raw.data)[countCols]
       res$sampleID = NULL
   } else { # for most we have multiple samples
       message(paste("Segmenting", (ncol(data)-2), "samples gamma=",round(gamma2*sdev,2)))
-      res = copynumber::multipcf( data=data, gamma=gamma2*sdev, fast=F, verbose=verbose, return.est=F, assembly=build )
+      res = copynumber::multipcf( data=data, gamma=gamma2*sdev, fast=F, verbose=verbose, return.est=F, assembly=build, normalize = norm )
   }
   tmp.seg = tempfile("segments.",cache.dir,".Rdata")
   save.image(file=tmp.seg)
@@ -537,6 +535,10 @@ tileSegments<-function(swgsObj, size=5e6, verbose=T) {
 
 # preps data for segmentation
 .prepRawSWGS<-function(raw.data,fit.data,blacklist,logTransform=F,plot=T,verbose=F) {
+
+  if (is.null(blacklist) | !is.data.frame(blacklist)) 
+    blacklist = readr::read_tsv(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), col_names=T, col_types='cii')  
+  
   if (ncol(blacklist) < 3)
     stop('Blacklisted regions missing or incorrectly formatted.\nExpected columnes: chromosome start end')
 

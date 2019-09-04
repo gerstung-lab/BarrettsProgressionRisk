@@ -6,8 +6,9 @@
 renamed from 'binSWGS'}
 \usage{
 segmentRawData(info, raw.data, fit.data, blacklist = NULL,
-  min.probes = 67, gamma2 = 250, cutoff = 0.015, logTransform = F,
-  cache.dir = getcachedir(), build = "hg19", verbose = T)
+  min.probes = 67, gamma2 = 250, norm = T, cutoff = 0.015,
+  logTransform = F, cache.dir = getcachedir(), build = "hg19",
+  verbose = T)
 }
 \arguments{
 \item{raw.data}{Data frame of raw read counts (file name is also valid)}
@@ -19,6 +20,8 @@ segmentRawData(info, raw.data, fit.data, blacklist = NULL,
 \item{min.probes}{minimum number of probes per segment DEF=67  (~1Mb)}
 
 \item{gamma2}{gamma adjustment for pcf DEF=250}
+
+\item{norm}{normalize pcf, DEF=T}
 
 \item{cutoff}{is the residual value cutoff for QC DEF=0.015}
 

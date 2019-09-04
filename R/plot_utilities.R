@@ -228,7 +228,7 @@ copyNumberMountainPlot<-function(brr,annotate=T, legend=T) {
   samples = rownames(brr$tiles)
   locs = get.loc(brr$tiles[,-ncol(brr$tiles),drop=F])
 
-  coefs =  as.matrix(coef(be.model$fit, be.model$lambda))
+  coefs =  as.matrix(coef(brr$be.fit$fit, brr$be.fit$lambda))
   coefs = coefs[which(coefs != 0),][-1]
   coefs = bind_cols(get.loc(t(coefs)), 'coef' = coefs)
   

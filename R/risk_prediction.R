@@ -46,7 +46,6 @@ rxRules<-
   )
 
 
-#' Main method that should be called to use the trained model.
 #' @name predictRisk
 #' @info SampleInformation object
 #' @param path where QDNAseq raw and corrected read files are REQ
@@ -55,7 +54,6 @@ rxRules<-
 #' @return BarrettsRiskRx object. Additional methods that take the object provide information (predictions, rx, segmentedValues, plotSegmentData, adjustRisk, sampleResiduals)
 #'
 #' @author skillcoyne
-#' @export
 predictRisk<-function(info, path, raw.file.grep='raw.*read', corrected.file.grep='corr|fitted', be.model=be.model.fit(), cache.dir=NULL, verbose=T) {
   if (!'SampleInformation' %in% class(info)) 
     stop("SampleInformation object from loadSampleInformation(...) required.")
