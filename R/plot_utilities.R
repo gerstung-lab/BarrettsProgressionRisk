@@ -207,7 +207,7 @@ patientEndoscopyPlot<-function(brr) {
 copyNumberMountainPlot<-function(brr,annotate=T, legend=T,  as=c('plot','list')) {
   if (length(which(class(brr) %in% c('BarrettsRiskRx'))) <= 0)
     stop("BarrettsRiskRx required")
-  rettype = match.args(as)
+  rettype = match.arg(as)
   
   mp = .mountainPlots(brr,annotate)
   ht = length(mp$plot.list)*2
