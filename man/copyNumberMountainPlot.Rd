@@ -4,10 +4,13 @@
 \alias{copyNumberMountainPlot}
 \title{Windowed, scaled CN values across the genome}
 \usage{
-copyNumberMountainPlot(brr, annotate = T, legend = T)
+copyNumberMountainPlot(brr, annotate = T, legend = T, as = c("plot",
+  "list"))
 }
 \arguments{
 \item{annotate}{If true, only segments in the non-zero coefficients are highlighted (DEF=T)}
+
+\item{as}{plot or list of plots}
 
 \item{type}{BarrettsRiskRx object}
 }

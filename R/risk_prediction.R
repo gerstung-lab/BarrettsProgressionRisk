@@ -46,62 +46,88 @@ rxRules<-
   )
 
 
-#' @name predictRisk
-#' @info SampleInformation object
-#' @param path where QDNAseq raw and corrected read files are REQ
-#' @param raw.file.grep for the filename of the raw reads file, default is 'raw.*read'
-#' @param corrected.file.grep for the filename of the corrected reads file, default is 'corr|fitted'
-#' @return BarrettsRiskRx object. Additional methods that take the object provide information (predictions, rx, segmentedValues, plotSegmentData, adjustRisk, sampleResiduals)
-#'
-#' @author skillcoyne
-predictRisk<-function(info, path, raw.file.grep='raw.*read', corrected.file.grep='corr|fitted', be.model=be.model.fit(), cache.dir=NULL, verbose=T) {
-  if (!'SampleInformation' %in% class(info)) 
-    stop("SampleInformation object from loadSampleInformation(...) required.")
 
-  if (is.null(cache.dir))
-    cache.dir = getcachedir()
+tileSamples<-function(obj, be.model=NULL, verbose=T) {
+  if (is.null(be.model)) {
+    be.model = be.model.fit(model=fitV, s=lambda, tile.size=5e6, 
+                            tile.mean=z.mean, arms.mean=z.arms.mean, tile.sd=z.sd, arms.sd=z.arms.sd, 
+                            cx.mean=mn.cx, cx.sd=sd.cx, per.pt.nzcoefs = nzcoefs, cvRR = coef_cv_RR, pconf = pred.confidence)
+    message('Using internal glmnet model.')
+  } else {
+    if (length(be.model$arms.mean) != length(be.model$arms.sd)) stop('Arm means/sd do not match in length') 
+    if (length(be.model$tile.mean) != length(be.model$tile.sd)) stop('Tile means/sd do not match in length') 
 
-  if (!exists('z.mean')) stop("sysdata file failed to load")
+    warning("Using EXTERNAL glmnet model. Validation not provided.")
+  }
+
+  # Tile, scale, then merge segmented values into 5Mb and arm-length windows across the genome.
+  segtiles = tileSegments(obj, size = be.model$tile.size, verbose=verbose)
+  for (i in 1:ncol(segtiles$tiles))
+    segtiles$tiles[,i] = unit.var(segtiles$tiles[,i], be.model$tile.mean[i], be.model$tile.sd[i])
     
-  rawFile = grep(raw.file.grep, list.files(path, pattern='txt', full.names=T), value=T, ignore.case=T)
-  corrFile = grep(corrected.file.grep, list.files(path, pattern='txt', full.names=T), value=T,ignore.case=T)
-
-  if (length(rawFile) <= 0 | length(corrFile) <= 0)
-    stop(paste("Raw reads file or corrected reads file not found in directory:", path))
-
-  if (length(rawFile) > 1 | length(corrFile) > 1)
-    stop(paste("Only one raw and fitted file expected, multiple found in: ", path))
-
-  if (verbose)
-    message(paste("Raw reads file: ", rawFile, "\n", "Corrected reads file: ", corrFile, "\n", sep=''))
-
-  raw.data = readr::read_tsv(rawFile, col_names=T, col_types = cols('chrom'=col_character()))
-  fit.data = readr::read_tsv(corrFile, col_names=T, col_type = cols('chrom'=col_character()))
-
-  if (length(which(dim(raw.data) == dim(fit.data))) != 2)
-    stop("Raw and corrected read files do not have the same number of rows or columns.")
-
-  descCols = grep('loc|chr|start|end',colnames(raw.data))
-  if (length(descCols) != 4)
-    stop("File needs the following genome information columns: location chrom start end.\nAll additional column should be samples.")
-
-  sampleCols = grep('loc|chr|start|end',colnames(raw.data), invert=T)
-  if (length(sampleCols) < 1)
-    stop("No sample columns found after genome information columns.")
-
-  if (length(which(sapply(raw.data[,sampleCols], is.integer))) < length(sampleCols))
-    stop(paste("Sample columns in raw read count file contain non-integer data."))
-
-  if (length(which(sapply(fit.data[,sampleCols], is.double))) < length(sampleCols))
-    warning(paste("Sample columns in fitted read count file contain integer data, fractional values expected."))
-
-  if (verbose) message(paste(length(sampleCols), "sample(s) loaded from",rawFile))
-
-  segmented = segmentRawData(info, raw.data,fit.data,cache.dir=cache.dir,verbose=verbose)
-  psp = predictRiskFromSegments(segmented, verbose=verbose)
+  armtiles = tileSegments(obj, size='arms',verbose=verbose)
+  for (i in 1:ncol(armtiles$tiles))
+    armtiles$tiles[,i] = unit.var(armtiles$tiles[,i], be.model$arms.mean[i], be.model$arms.sd[i])
+    
+  cx.score = unit.var(scoreCX(segtiles$tiles,1), be.model$cx.mean, be.model$cx.sd)
+  mergedDf = subtractArms(segtiles$tiles, armtiles$tiles)
+  mergedDf = cbind(mergedDf, 'cx'=cx.score)
   
+  # get the bootstrap errors for coefficients  
+  coef.error = .bootstrap.coef.stderr(be.model)
+  
+  # Errors are the per window, weighted mean error of all segments in the bin
+  Xerr = cbind(segtiles$error, armtiles$error)
+  Xerr_diag = apply(Xerr, 1, function(x) { diag(as.matrix(x^2)) })
+  
+  # covariance
+  covB = cov(coef.error[,'jack.se',drop=F])[1]
+  X = t(mergedDf[,coef.error$coef,drop=F])
+  B = coef.error[,'1',drop=F] %>% data.frame
+  
+  Var_rr = apply(X,2,function(x) sum(x*covB*x)) + sapply(Xerr_diag, function(x) sum(B*x*B))
+  perSampleError = sqrt( Var_rr )
+  
+  return(list('tiles'=mergedDf, 'residuals'=Xerr, 'per.sample.error'=perSampleError))  
+}
+
+predictRisk<-function(obj, merged.tiles, be.model = NULL, verbose=T) {
+  if (is.null(be.model)) {
+    be.model = be.model.fit(model=fitV, s=lambda, tile.size=5e6, 
+                            tile.mean=z.mean, arms.mean=z.arms.mean, tile.sd=z.sd, arms.sd=z.arms.sd, 
+                            cx.mean=mn.cx, cx.sd=sd.cx, per.pt.nzcoefs = nzcoefs, cvRR = coef_cv_RR, pconf = pred.confidence)
+    message('Using internal glmnet model.')
+  } else {
+    warning("Using EXTERNAL glmnet model. Validation not provided.")
+  }
+
+  sparsed_test_data = Matrix(data=0, nrow=nrow(merged.tiles$tiles),  ncol=ncol(merged.tiles$tiles),
+                             dimnames=list(rownames(merged.tiles$tiles),colnames(merged.tiles$tiles)), sparse=T)
+  for(i in colnames(merged.tiles$tiles)) sparsed_test_data[,i] = merged.tiles$tiles[,i]
+  
+  perSampleError = tibble('Sample'=names(merged.tiles$per.sample.error),'Error'=merged.tiles$per.sample.error)
+  perSampleError = left_join(perSampleError, obj$sample.info, by='Sample') %>% dplyr::select('Sample','Error','Endoscopy')
+  
+  # Predict and generate absolute probabilities
+  RR = predict(be.model$fit, newx=sparsed_test_data, s=be.model$lambda, type='link')
+  probs = pi.hat(RR)
+  
+  per.sample.preds = full_join(tibble('Sample'=rownames(probs), 
+                                      'Probability'=round(probs[,1],2), 
+                                      'Relative Risk'=RR[,1],
+                                      'Risk'=sapply(probs[,1], .risk, be.model)), 
+                               obj$sample.info %>% dplyr::filter(Sample %in% as.character(sampleResiduals(obj) %>% dplyr::filter(Pass) %>% dplyr::select(sample) %>% pull) ), 
+                               by='Sample')
+  
+  per.endo.preds = .setUpRxTablePerEndo(per.sample.preds, 'max', verbose) %>% rowwise() %>% mutate( Risk=.risk(Probability,be.model))
+  perEndoError = .setUpRxTablePerEndo(perSampleError, 'max', F) %>% dplyr::select('Endoscopy','Error')
+  
+  psp = list('per.endo'=per.endo.preds, 'per.sample'=per.sample.preds, 'segmented'=obj, 'per.sample.error'=perSampleError, 'per.endo.error'=perEndoError, 'tiles'=merged.tiles$tiles, 'be.fit' = be.model)
+  
+  class(psp) <- c('BarrettsRiskRx', class(psp))
   return(psp)
 }
+
 
 #' Get the per-sample residuals calculated from the segmentation phase.
 #' @name predictRiskFromSegments
@@ -129,63 +155,15 @@ predictRiskFromSegments<-function(obj, be.model = NULL, verbose=T) {
   }
     
   # Tile, scale, then merge segmented values into 5Mb and arm-length windows across the genome.
-  mergedDf = tryCatch({
-      segtiles = tileSegments(obj, size = be.model$tile.size, verbose=verbose)
-      for (i in 1:ncol(segtiles$tiles))
-        segtiles$tiles[,i] = unit.var(segtiles$tiles[,i], be.model$tile.mean[i], be.model$tile.sd[i])
-      
-      armtiles = tileSegments(obj, size='arms',verbose=verbose)
-      for (i in 1:ncol(armtiles$tiles))
-        armtiles$tiles[,i] = unit.var(armtiles$tiles[,i], be.model$arms.mean[i], be.model$arms.sd[i])
-      
-      cx.score = unit.var(scoreCX(segtiles$tiles,1), be.model$cx.mean, be.model$cx.sd)
-      mergedDf = subtractArms(segtiles$tiles, armtiles$tiles)
-      
-      cbind(mergedDf, 'cx'=cx.score)
+  binnedSamples = tryCatch({
+    tileSamples(obj, be.model, verbose)
   }, error = function(e) {
     msg = paste("ERROR tiling segmented data:", e)
     stop(msg)
   })
   
-  sparsed_test_data = Matrix(data=0, nrow=nrow(mergedDf),  ncol=ncol(mergedDf),
-                             dimnames=list(rownames(mergedDf),colnames(mergedDf)), sparse=T)
-  for(i in colnames(mergedDf)) sparsed_test_data[,i] = mergedDf[,i]
-  
-  
-  # get the bootstrap errors for coefficients
-  coef.error = .bootstrap.coef.stderr(be.model)
-  
-  # Errors are the per window, weighted mean error of all segments in the bin
-  Xerr = cbind(segtiles$error, armtiles$error)
-  Xerr_diag = apply(Xerr, 1, function(x) { diag(as.matrix(x^2)) })
-
-  # covariance
-  covB = cov(coef.error[,'jack.se',drop=F])[1]
-  X = t(mergedDf[,coef.error$coef,drop=F])
-  B = coef.error[,'1',drop=F]
-  
-  Var_rr = apply(X,2,function(x) sum(x*covB*x)) + sapply(Xerr_diag, function(x) sum(B*x*B))
-  perSampleError = sqrt( Var_rr )
-  perSampleError = tibble('Sample'=names(perSampleError),'Error'=perSampleError)
-  
-  perSampleError = left_join(perSampleError, obj$sample.info, by='Sample') %>% dplyr::select('Sample','Error','Endoscopy')
-  
-  # Predict and generate absolute probabilities
-  RR = predict(be.model$fit, newx=sparsed_test_data, s=be.model$lambda, type='link')
-  probs = pi.hat(RR)
-  
-  per.sample.preds = full_join(tibble('Sample'=rownames(probs), 
-                                      'Probability'=round(probs[,1],2), 
-                                      'Relative Risk'=RR[,1],
-                                      'Risk'=sapply(probs[,1], .risk, be.model)), 
-                               obj$sample.info %>% dplyr::filter(Sample %in% as.character(sampleResiduals(obj) %>% dplyr::filter(Pass) %>% dplyr::select(sample) %>% pull) ), 
-                               by='Sample')
-  
-  per.endo.preds = .setUpRxTablePerEndo(per.sample.preds, 'max', verbose) %>% rowwise() %>% mutate( Risk=.risk(Probability,be.model))
-  perEndoError = .setUpRxTablePerEndo(perSampleError, 'max', F) %>% dplyr::select('Endoscopy','Error')
-  
-  psp = list('per.endo'=per.endo.preds, 'per.sample'=per.sample.preds, 'segmented'=obj, 'per.sample.error'=perSampleError, 'per.endo.error'=perEndoError, 'tiles'=mergedDf, 'be.fit' = be.model)
-  class(psp) <- c('BarrettsRiskRx', class(psp))
+  # Predict  
+  psp = predictRisk(obj, binnedSamples, be.model)
   return(psp)
 }
 

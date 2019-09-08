@@ -212,7 +212,7 @@ copyNumberMountainPlot<-function(brr,annotate=T, legend=T,  as=c('plot','list'))
   mp = .mountainPlots(brr,annotate)
   ht = length(mp$plot.list)*2
   
-  if (as == 'list') {
+  if (rettype == 'list') {
     plist = mp$plot.list
     if (legend)
       plist = lapply(mp$plot.list, function(p) gridExtra::arrangeGrob(p, mp$legend,  heights=c(ht = length(mp$plot.list)*2,1), ncol=1))
@@ -240,7 +240,10 @@ copyNumberMountainPlot<-function(brr,annotate=T, legend=T,  as=c('plot','list'))
   coefs = coefs[which(coefs != 0),][-1]
   coefs = bind_cols(get.loc(t(coefs)), 'coef' = coefs)
   
-  cvdf = bind_cols( get.loc(t(brr$be.fit$cvRR)), 'cvRR' = brr$be.fit$cvRR[,'cvRR'])
+  cvRR = brr$be.fit$cvRR
+  if (is.data.frame(brr$be.fit$cvRR)) cvRR = brr$be.fit$cvRR[,'cvRR']
+  
+  cvdf = bind_cols( get.loc(t(brr$be.fit$cvRR)), 'cvRR' = cvRR)
   
   cvdf = full_join(cvdf, coefs, by=c('chr','start','end'))
   
