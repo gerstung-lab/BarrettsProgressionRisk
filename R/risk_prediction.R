@@ -47,7 +47,7 @@ rxRules<-
 
 
 
-tileSamples<-function(obj, be.model=NULL, verbose=T) {
+tileSamples<-function(obj, be.model=NULL, scale=T, incCX=T, verbose=T) {
   if (is.null(be.model)) {
     be.model = be.model.fit(model=fitV, s=lambda, tile.size=5e6, 
                             tile.mean=z.mean, arms.mean=z.arms.mean, tile.sd=z.sd, arms.sd=z.arms.sd, 
@@ -62,14 +62,24 @@ tileSamples<-function(obj, be.model=NULL, verbose=T) {
 
   # Tile, scale, then merge segmented values into 5Mb and arm-length windows across the genome.
   segtiles = tileSegments(obj, size = be.model$tile.size, verbose=verbose)
-  for (i in 1:ncol(segtiles$tiles))
-    segtiles$tiles[,i] = unit.var(segtiles$tiles[,i], be.model$tile.mean[i], be.model$tile.sd[i])
+  if (scale) {
+    for (i in 1:ncol(segtiles$tiles))
+      segtiles$tiles[,i] = unit.var(segtiles$tiles[,i], be.model$tile.mean[i], be.model$tile.sd[i])
+  }
     
   armtiles = tileSegments(obj, size='arms',verbose=verbose)
-  for (i in 1:ncol(armtiles$tiles))
-    armtiles$tiles[,i] = unit.var(armtiles$tiles[,i], be.model$arms.mean[i], be.model$arms.sd[i])
+  if (scale) {
+    for (i in 1:ncol(armtiles$tiles))
+      armtiles$tiles[,i] = unit.var(armtiles$tiles[,i], be.model$arms.mean[i], be.model$arms.sd[i])
+  }
     
-  cx.score = unit.var(scoreCX(segtiles$tiles,1), be.model$cx.mean, be.model$cx.sd)
+  cx.score = scoreCX(segtiles$tiles,1)
+  if (scale) {
+    cx.score = unit.var(cx.score, be.model$cx.mean, be.model$cx.sd)
+  } else {
+    cx.score = cx.score/sqrt(mean(be.model$cx.mean^2))
+  }
+  
   mergedDf = subtractArms(segtiles$tiles, armtiles$tiles)
   mergedDf = cbind(mergedDf, 'cx'=cx.score)
   
