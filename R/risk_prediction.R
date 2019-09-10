@@ -48,6 +48,8 @@ rxRules<-
 
 
 tileSamples<-function(obj, be.model=NULL, scale=T, incCX=T, verbose=T) {
+  if (verbose) message(paste0('Scale tiled data: ',scale))
+  
   if (is.null(be.model)) {
     be.model = be.model.fit(model=fitV, s=lambda, tile.size=5e6, 
                             tile.mean=z.mean, arms.mean=z.arms.mean, tile.sd=z.sd, arms.sd=z.arms.sd, 
