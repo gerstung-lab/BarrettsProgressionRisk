@@ -64,25 +64,24 @@ tileSamples<-function(obj, be.model=NULL, scale=T, MARGIN=2, verbose=T) {
 
   # Tile, scale, then merge segmented values into 5Mb and arm-length windows across the genome.
   segtiles = tileSegments(obj, size = be.model$tile.size, verbose=verbose)
-  if (scale & MARGIN == 2) {
-    for (i in 1:ncol(segtiles$tiles))
-      segtiles$tiles[,i] = unit.var(segtiles$tiles[,i], be.model$tile.mean[i], be.model$tile.sd[i])
-  } else if (scale & MARGIN == 1) {
-    tl = t(apply(segtiles$tiles, 1, scale, center=T, scale=T))
-    colnames(tl) = colnames(segtiles$tiles)
-    segtiles$tiles = tl
-  }
-    
   armtiles = tileSegments(obj, size='arms',verbose=verbose)
   if (scale & MARGIN == 2) {
+    if (verbose) message('Scaling and centering per bin')
+    for (i in 1:ncol(segtiles$tiles))
+      segtiles$tiles[,i] = unit.var(segtiles$tiles[,i], be.model$tile.mean[i], be.model$tile.sd[i])
     for (i in 1:ncol(armtiles$tiles))
       armtiles$tiles[,i] = unit.var(armtiles$tiles[,i], be.model$arms.mean[i], be.model$arms.sd[i])
   } else if (scale & MARGIN == 1) {
+    if (verbose) message('Scaling and centering per sample')
+    tl = t(apply(segtiles$tiles, 1, scale, center=T, scale=T))
+    colnames(tl) = colnames(segtiles$tiles)
+    segtiles$tiles = tl
+    
     tl = t(apply(armtiles$tiles, 1, scale, center=T, scale=T))
     colnames(tl) = colnames(armtiles$tiles)
     armtiles$tiles = tl
   }
-  
+    
   cx.score = scoreCX(segtiles$tiles,1)
   if (scale & MARGIN == 2) {
     cx.score = unit.var(cx.score, be.model$cx.mean, be.model$cx.sd)
