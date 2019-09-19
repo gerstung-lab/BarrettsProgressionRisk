@@ -202,7 +202,9 @@ subtractArms<-function(segments, arms) {
 #'
 #' @author skillcoyne
 #' @export
-segmentRawData<-function(info, raw.data, fit.data, blacklist=NULL, min.probes=67, gamma2=250, norm=T, cutoff=0.015, logTransform=F, cache.dir=getcachedir(), build='hg19', verbose=T) {
+segmentRawData<-function(info, raw.data, fit.data, blacklist=NULL, min.probes=67, gamma2=250, norm=T, intPloidy=F, cutoff=0.015, logTransform=F, cache.dir=getcachedir(), build='hg19', verbose=T) {
+  if (intPloidy & cutoff < 0.03) cutoff = cutoff*2
+  
   if (!'SampleInformation' %in% class(info))
     stop("SampleInformation object from loadSampleInformation(...) required")
 
@@ -239,13 +241,14 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=NULL, min.probes=67
     countCols = countCols[which(colnames(fit.data)[countCols] %in% smps)]
   }
 
-  prepped = .prepRawSWGS(raw.data,fit.data,blacklist,logTransform)
+  prepped = .prepRawSWGS(raw.data,fit.data,blacklist,logTransform,intPloidy)
   data = prepped$data
 
   sdevs = prepped$sdevs
   sdev = exp(mean(log(sdevs[!is.na(sdevs)])))
   if(verbose) message(paste('sdev=',signif(sdev,3),sep=''))
 
+  ## TODO Using IntPloidy we may want to only pcf a single sample at a time
   if (ncol(data) < 4) { # Single sample
       if (verbose) message(paste("Segmenting single sample gamma=",round(gamma2*sdev,2)))
       res = copynumber::pcf( data=data, gamma=gamma2*sdev, fast=F, verbose=verbose, return.est=F, assembly=build, normalize = norm )
@@ -255,6 +258,7 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=NULL, min.probes=67
       message(paste("Segmenting", (ncol(data)-2), "samples gamma=",round(gamma2*sdev,2)))
       res = copynumber::multipcf( data=data, gamma=gamma2*sdev, fast=F, verbose=verbose, return.est=F, assembly=build, normalize = norm )
   }
+
   tmp.seg = tempfile("segments.",cache.dir,".Rdata")
   save.image(file=tmp.seg)
 
@@ -267,6 +271,8 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=NULL, min.probes=67
   resids = .calculateSegmentResiduals(res, data, verbose=verbose)
   resids = resids[which(!is.na(sdevs))]
   
+  if (intPloidy) res = res %>% dplyr::mutate_at(vars(qcsamples), list( ~round(.,1) ))
+
   coverage = round(sum(as.numeric(with(res, end.pos-start.pos)))/chr.info[22,'genome.length'],3)
   if (verbose) message(paste(coverage, 'of the genome covered by segments.'))
   
@@ -534,7 +540,7 @@ tileSegments<-function(swgsObj, size=5e6, verbose=T) {
 }
 
 # preps data for segmentation
-.prepRawSWGS<-function(raw.data,fit.data,blacklist,logTransform=F,plot=T,verbose=F) {
+.prepRawSWGS<-function(raw.data,fit.data,blacklist,logTransform=F,intPloidy=T,plot=T,verbose=F) {
 
   if (is.null(blacklist) | !is.data.frame(blacklist)) 
     blacklist = readr::read_tsv(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), col_names=T, col_types='cii')  
@@ -548,20 +554,21 @@ tileSegments<-function(swgsObj, size=5e6, verbose=T) {
 
   sortedCountCols = intersect(colnames(raw.data), colnames(fit.data))
 
-  raw.data = raw.data %>% select(matches('loc|feat|chr|start|end'), sortedCountCols)
-  fit.data = fit.data %>% select(matches('loc|feat|chr|start|end'), sortedCountCols)
+  raw.data = raw.data %>% dplyr::select(matches('loc|feat|chr|start|end'), sortedCountCols)
+  fit.data = fit.data %>% dplyr::select(matches('loc|feat|chr|start|end'), sortedCountCols)
   
   countCols = grep('loc|feat|chr|start|end', colnames(fit.data), invert=T)
   infoCols = grep('loc|feat|chr|start|end', colnames(fit.data))
 
   # raw counts adjusted by the fitted
   window.depths = as.vector(as.matrix(raw.data[,countCols]))/as.vector(as.matrix(fit.data[,countCols]))
-
+  
   # QDNAseq does this in 'correctBins' but we don't use that method so added here
   negs = which(as.vector(as.matrix(fit.data[,countCols])) <= 0)
   if (length(negs) > 0) window.depths[negs] = 0
 
   window.depths = matrix(window.depths, ncol=length(countCols))
+  if (intPloidy) window.depths = apply(window.depths, 2, function(x) x/(median(x,na.rm=T)/2) )
 
   plotlist = list()
   if (plot) {
@@ -596,8 +603,7 @@ tileSegments<-function(swgsObj, size=5e6, verbose=T) {
   if (length(countCols) == 1) window.depths = as.data.frame(window.depths)
 
   window.depths.standardised = as.data.frame(window.depths[which(!fit.data$in.blacklist),])
-  if (logTransform)
-    window.depths.standardised = log2( window.depths.standardised+abs(min(window.depths.standardised, na.rm=T))+1 )
+  if (logTransform) window.depths.standardised = log2( window.depths.standardised+abs(min(window.depths.standardised, na.rm=T))+1 )
 
   fit.data = fit.data[!fit.data$in.blacklist,-ncol(fit.data)]
   sdevs = sapply(c(1:length(countCols)), function(s) {
