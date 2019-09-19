@@ -271,7 +271,7 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=NULL, min.probes=67
   resids = .calculateSegmentResiduals(res, data, verbose=verbose)
   resids = resids[which(!is.na(sdevs))]
   
-  if (intPloidy) res = res %>% dplyr::mutate_at(vars(qcsamples), list( ~round(.,1) ))
+  if (intPloidy) res = res %>% dplyr::mutate_at(vars(info$Sample), list( ~round(.,1) ))
 
   coverage = round(sum(as.numeric(with(res, end.pos-start.pos)))/chr.info[22,'genome.length'],3)
   if (verbose) message(paste(coverage, 'of the genome covered by segments.'))
