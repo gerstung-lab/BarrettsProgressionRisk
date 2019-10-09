@@ -5,7 +5,7 @@
 #' 
 #' @author skillcoyne
 #' @export
-runQDNAseq<-function(bam=NULL,path=NULL,outputPath=NULL, minMapQ=37) {
+runQDNAseq<-function(bam=NULL,path=NULL,outputPath=NULL, minMapQ=37, binsize=15) {
   require(Biobase) 
   require(QDNAseq) 
   require(tidyverse) 
@@ -22,14 +22,14 @@ runQDNAseq<-function(bam=NULL,path=NULL,outputPath=NULL, minMapQ=37) {
     dir.create(outputPath, recursive = T)
   
   # get/read bin annotations
-  bins <- QDNAseq::getBinAnnotations(binSize = 15)
+  bins <- QDNAseq::getBinAnnotations(binSize = binsize)
   
-  saveRDS(bins, paste(outputPath, "15kbp.rds", sep='/'))
+  saveRDS(bins, paste(outputPath, paste0(binsize,"kbp.rds"), sep='/'))
 
   # write bin annotations
   pData(bins) %>%
     dplyr::mutate_at(vars(start, end), funs(as.integer)) %>%
-    write_tsv(paste(outputPath,"15kbp.txt",sep='/'))
+    write_tsv(paste(outputPath,paste0(binsize,"kbp.txt"),sep='/'))
   
   # process BAM files obtaining read counts within bins
   if (!is.null(bam)) {
@@ -186,13 +186,21 @@ subtractArms<-function(segments, arms) {
   return(mergedDf)
 }
 
+
+qdna.to.probes<-function(kb) {
+  is.wholenumber <- function(x, tol = .Machine$double.eps^0.5)  abs(x - round(x)) < tol
+  
+  if (!is.wholenumber(kb)) stop('Missing integer value for kb bin size used in QDNAseq segmentation')
+  round(1e6/(kb*1000))
+}
+
 #' This function runs the copynumber::pcf algorithm to segment the sWGS data.
 #' renamed from 'binSWGS'
 #' @name segmentRawData
 #' @param raw.data Data frame of raw read counts (file name is also valid)
 #' @param fit.data Data frame of fitted read values (file name is also valid)
 #' @param blacklist qDNAseq_blacklistedRegions (defaults to file provided in package)
-#' @param min.probes minimum number of probes per segment DEF=67  (~1Mb)
+#' @param kb QDNAseq bin size
 #' @param gamma2 gamma adjustment for pcf DEF=250
 #' @param cutoff is the residual value cutoff for QC DEF=0.015
 #' @param norm normalize pcf, DEF=T
@@ -202,9 +210,13 @@ subtractArms<-function(segments, arms) {
 #'
 #' @author skillcoyne
 #' @export
-segmentRawData<-function(info, raw.data, fit.data, blacklist=NULL, min.probes=67, gamma2=250, norm=T, intPloidy=F, cutoff=0.015, logTransform=F, cache.dir=getcachedir(), build='hg19', verbose=T) {
+segmentRawData<-function(info, raw.data, fit.data, blacklist=readr::read_tsv(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), col_names=T, col_types='cii'), gamma2=250, kb=15, cutoff=0.015, multipcf=T, logTransform=F, cache.dir=getcachedir(), build='hg19', verbose=T) {
+  
+  intPloidy=F  # This wasn't terribly useful. Leaving the code in place for the moment but setting it to false by default.
   if (intPloidy & cutoff < 0.03) cutoff = cutoff*2
   
+  min.probes = qdna.to.probes(kb)
+
   if (!'SampleInformation' %in% class(info))
     stop("SampleInformation object from loadSampleInformation(...) required")
 
@@ -241,8 +253,13 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=NULL, min.probes=67
     countCols = countCols[which(colnames(fit.data)[countCols] %in% smps)]
   }
 
-  prepped = .prepRawSWGS(raw.data,fit.data,blacklist,logTransform,intPloidy)
+  prepped = prepRawSWGS(raw.data,fit.data,blacklist,logTransform)
   data = prepped$data
+
+  raw.variance = data %>% summarise_at(vars(-chrom, -start), list(~sd(.,na.rm=T))) 
+  # TODO load St.Dev data for all training 'prepped' data into the sysdata file
+  if (length(which(raw.variance > 0.21) > 0))
+      warning( paste(paste(names(raw.variance[which(raw.variance > 0.15)]), collapse=', '), 'raw values have a std.dev. > 0.21. Rerun QDNAseq with a larger binsize.') )
 
   sdevs = prepped$sdevs
   sdev = exp(mean(log(sdevs[!is.na(sdevs)])))
@@ -251,12 +268,26 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=NULL, min.probes=67
   ## TODO Using IntPloidy we may want to only pcf a single sample at a time
   if (ncol(data) < 4) { # Single sample
       if (verbose) message(paste("Segmenting single sample gamma=",round(gamma2*sdev,2)))
-      res = copynumber::pcf( data=data, gamma=gamma2*sdev, fast=F, verbose=verbose, return.est=F, assembly=build, normalize = norm )
+      res = copynumber::pcf( data=data, gamma=gamma2*sdev, fast=F, verbose=verbose, return.est=F, assembly=build)
       colnames(res)[grep('mean', colnames(res))] = colnames(raw.data)[countCols]
       res$sampleID = NULL
+  } else if (!multipcf) {
+    if (verbose) message(paste("Segmenting multiple samples individually gamma=",round(gamma2*sdev,2)))
+    
+    segs = lapply(smps, function(s) {
+      if (verbose) message(s)
+      tmp = data %>% dplyr::select(chrom,start,matches(s))
+      res = copynumber::pcf( data=tmp, gamma=gamma2*sdev, fast=F, verbose=verbose, return.est=F, assembly=build)
+      colnames(res)[grep('mean', colnames(res))] = s
+      res$sampleID = NULL
+      return(res)
+    })
+    names(segs) = smps
+    res = do.call(bind_rows, segs) %>% arrange(chrom, start.pos)
+    
   } else { # for most we have multiple samples
       message(paste("Segmenting", (ncol(data)-2), "samples gamma=",round(gamma2*sdev,2)))
-      res = copynumber::multipcf( data=data, gamma=gamma2*sdev, fast=F, verbose=verbose, return.est=F, assembly=build, normalize = norm )
+      res = copynumber::multipcf( data=data, gamma=gamma2*sdev, fast=F, verbose=verbose, return.est=F, assembly=build)
   }
 
   tmp.seg = tempfile("segments.",cache.dir,".Rdata")
@@ -273,8 +304,9 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=NULL, min.probes=67
   
   if (intPloidy) res = res %>% dplyr::mutate_at(vars(info$Sample), list( ~round(.,1) ))
 
-  coverage = round(sum(as.numeric(with(res, end.pos-start.pos)))/chr.info[22,'genome.length'],3)
-  if (verbose) message(paste(coverage, 'of the genome covered by segments.'))
+  coverage = sapply(segs, function(res) round(sum(as.numeric(with(res, end.pos-start.pos)),na.rm=T)/(chr.info %>% filter(chr == 22) %>% select(genome.length) %>% pull),3) )
+  #coverage = round(sum(as.numeric(with(res, end.pos-start.pos)),na.rm=T)/chr.info[22,'genome.length'],3)
+  if (verbose) message(paste(round(mean(coverage),2), 'of the genome covered by segments.'))
   
   # --- Plot segmented data
   plist = tryCatch({
@@ -284,10 +316,10 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=NULL, min.probes=67
     window.depths.standardised = prepped$window.depths.standardised
     if (verbose) message('Plotting segmented data.')
     for(col in which(!is.na(sdevs))) {
-      p = .plotSegmentedGenome(fitted = fit.data[good.bins,c(1:4,4+col)], segmented = res[,c(1:5,5+col)], window.depths.std = window.depths.standardised[good.bins,col,drop=F]) + labs(title=colnames(res)[5+col])
+      p = .plotSegmentedGenome(fitted = fit.data[good.bins,c(1:4,4+col)], segmented = na.omit(res[,c(1:5,5+col)]), window.depths.std = window.depths.standardised[good.bins,col,drop=F]) + labs(title=colnames(res)[5+col])
   
-      med = median(res[,5+col])
-      std = sd(res[,5+col])*2
+      med = median(res[,5+col],na.rm=T)
+      std = sd(res[,5+col],na.rm=T)*2
       p = p + geom_hline(yintercept = c(med-std,med+std), color='grey')
   
       plist[[colnames(res)[5+col]]] = p
@@ -302,11 +334,9 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=NULL, min.probes=67
   if (verbose) message('Calculating sample residual variance.')
   pvr = .per.sample.residual.variance(resids)
   digits = length(unlist((strsplit(unlist(strsplit(as.character(cutoff), '\\.'))[2], ''))))
-  pvr = pvr %>% mutate_at(vars(contains('MAD')), list(round), digits)
+  pvr = pvr %>% mutate_at(vars(contains('MAD')), list(round), digits) %>% mutate(Pass = round(pvr$varMAD_median, 3) <= cutoff)
   
-  pvr$Pass = round(pvr$varMAD_median, 3) <= cutoff
-  
-  qcsamples = as.character(subset(pvr, Pass)$sample)
+  qcsamples = pvr %>% filter(Pass) %>% dplyr::select(matches('sample')) %>% pull
   if (verbose) message(paste(length(qcsamples), '/', nrow(pvr), ' samples passed QC.', sep=''))
 
   passedQC = res[,c(1:5,grep(paste(qcsamples,collapse='|'), colnames(res)))]
@@ -315,7 +345,7 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=NULL, min.probes=67
 
   # There's a better way to do objects/classes in R, need to spend some time with it
   swgsObj = list('seg.vals'=passedQC, 'residuals'=pvr, 'segment.residual.MSE'=resids, 'prepped.data'=data, 'seg.plots'=plist, 
-             'genome.coverage'=coverage, 'failedQC'=failedQC, 'temp.file'=tmp.seg, 'cv.plot'=prepped$cv.plot, 'chr.build.info'=build, 'sample.info'=info)
+             'genome.coverage'=coverage, 'failedQC'=failedQC, 'temp.file'=tmp.seg, 'cv.plot'=prepped$cv.plot, 'chr.build.info'=build, 'sample.info'=info, bin.size=kb)
   class(swgsObj) <- c('SegmentedSWGS', class(swgsObj))
   save(swgsObj, file=tmp.seg)
 
@@ -362,7 +392,7 @@ tileSegments<-function(swgsObj, size=5e6, verbose=T) {
   if ( nrow(failed) == nrow(sampleResiduals(swgsObj) ) )
     stop('All samples failed QC, no data available for prediction.')
 
-  resids = swgsObj$segment.residual.MSE[as.character(subset(swgsObj$residuals, Pass)$sample)] 
+  resids = swgsObj$segment.residual.MSE[as.character((swgsObj$residuals %>% dplyr::filter(Pass) %>% dplyr::select(matches('sample')) %>% pull))] 
   if (!is_tibble(data)) data = as_tibble(data)
   
   #mse = mse[,intersect(colnames(data), colnames(mse))]
@@ -375,18 +405,20 @@ tileSegments<-function(swgsObj, size=5e6, verbose=T) {
   startPos = grep('start',colnames(data),ignore.case=T,value=T)
   endPos = grep('end',colnames(data),ignore.case=T,value=T)
 
-  data = data[which(!data[[chrCol]] %in% c('X','Y')),]
-  x1 = data[,c(chrCol, startPos, endPos, colnames(data)[dataCols])]
-
+  # No sex chromosomes
+  data = data %>% filter(!!sym(chrCol) %in% c(1:22) )
+  
   tiles = .tile.genome(size, chrInfo(build=swgsObj$chr.build.info), allosomes=length(which(grepl('X|Y', unique(data[[chrCol]])))) > 0)
-  gr = GenomicRanges::makeGRangesFromDataFrame(x1, keep.extra.columns=T, start.field=startPos, end.field=endPos  )
-  #mseGR = GenomicRanges::makeGRangesFromDataFrame(mse[,c(chrCol,startPos,endPos,colnames(data)[dataCols])], keep.extra.columns=T, start.field=startPos, end.field=endPos  )
-
   mergedDf = (do.call(rbind, lapply(tiles, function(tile) {
     cbind('chr'=as.character(seqnames(tile)), as.data.frame(ranges(tile))[1:2])
   }) ))
   mergedDf[colnames(data)[dataCols]] = NA
   errorDf = mergedDf
+  
+  x1 = data %>% dplyr::select(chrCol, startPos, endPos, colnames(data)[dataCols])
+
+  gr = GenomicRanges::makeGRangesFromDataFrame(x1, keep.extra.columns=T, start.field=startPos, end.field=endPos  )
+  #mseGR = GenomicRanges::makeGRangesFromDataFrame(mse[,c(chrCol,startPos,endPos,colnames(data)[dataCols])], keep.extra.columns=T, start.field=startPos, end.field=endPos  )
 
   meanSegs = c()
   ov = GenomicRanges::findOverlaps(tiles, gr) # Each tile is a chromosome, so the overlaps are only per chromosome here
@@ -398,19 +430,18 @@ tileSegments<-function(swgsObj, size=5e6, verbose=T) {
       bin = currentChr[i]
 
       segments = gr[subjectHits(curov[queryHits(curov) == i])]
-
       weights = sapply(as(segments,'GRangesList'),function(r) width(pintersect(bin, r))/width(bin) )
       
       rows = with(mergedDf, which( chr==as.character(seqnames(bin)) & start == start(bin) & end == end(bin)))
-      if (length(segments) > 1 & verbose)
-        message(paste("chr", chr, "bin", bin, "has", length(segments), "matching segments"))
+      if (length(segments) > 0 & verbose)
+        message(paste("chr", chr, "bin", bin, "has", length(segments), "matching segments in", length(dataCols), 'samples.'))
 
       meanSegs = c(meanSegs, length(segments))
 
       # weight means by the coverage of the bin
       values = apply(GenomicRanges::elementMetadata(segments), 2, weighted.mean, w=weights, na.rm=T)
 
-      vMSE = apply(t(do.call(rbind,lapply(resids, function(sample) {
+      vMSE = apply(t(do.call(rbind, lapply(resids, function(sample) {
         sapply(sample[subjectHits(curov[queryHits(curov) == i])], sd)
       }))),2,weighted.mean,weights)
 
@@ -498,7 +529,7 @@ tileSegments<-function(swgsObj, size=5e6, verbose=T) {
   resids = list()
   for (i in 1:cols) {
     sample.name = colnames(observedCN)[-c(1:2)][i]
-    pred.seg = calcSegments[,c(1:5,(5+i))]
+    pred.seg = na.omit(calcSegments[,c(1:5,(5+i))])
 
     resvar = lapply(1:nrow(pred.seg), function(j) {
       seg = pred.seg[j,]
@@ -517,22 +548,21 @@ tileSegments<-function(swgsObj, size=5e6, verbose=T) {
     stop("List of segment residuals required")
   }
 
-  cols = c('samplename','varMAD','n.segs')
-  res.variance = (data.frame(matrix(ncol=length(cols), nrow=0, dimnames=list(c(),cols))))
-
   var.resids = lapply(segment.residuals, function(sample) {
     do.call(rbind.data.frame, lapply(sample, function(y) {
       cbind('varMAD'=var(y[y<mad(y,na.rm=T) & y>-mad(y,na.rm=T)]))
     }))
   })
+  
+  res.variance = tibble()
   for (sample in names(var.resids)) {
     n.segs = length(segment.residuals[[sample]])
 
-    msd = var.resids[[sample]] %>% dplyr::summarise_all(funs(median,sd) )
-    q1 = var.resids[[sample]] %>% dplyr::summarise_all(funs(Q1=quantile),probs=0.25,na.rm=T )
-    q3 = var.resids[[sample]] %>% dplyr::summarise_all(funs(Q3=quantile),probs=0.75,na.rm=T )
+    msd = var.resids[[sample]] %>% dplyr::summarise_all(list(~median(.,na.rm=T),~sd(.,na.rm=T)) )
+    q1 = var.resids[[sample]] %>% dplyr::summarise_all(list(Q1=quantile),probs=0.25,na.rm=T )
+    q3 = var.resids[[sample]] %>% dplyr::summarise_all(list(Q3=quantile),probs=0.75,na.rm=T )
 
-    res.variance = rbind(res.variance, cbind(sample,msd,q1,q3,n.segs))
+    res.variance = bind_rows(res.variance, bind_cols(bind_cols(msd,q1), q3) %>% add_column(samplename = sample, .before=1))
   }
   colnames(res.variance)[2:5] = paste('varMAD_',colnames(res.variance)[2:5],sep='')
 
@@ -540,10 +570,9 @@ tileSegments<-function(swgsObj, size=5e6, verbose=T) {
 }
 
 # preps data for segmentation
-.prepRawSWGS<-function(raw.data,fit.data,blacklist,logTransform=F,intPloidy=T,plot=T,verbose=F) {
+prepRawSWGS<-function(raw.data,fit.data,blacklist = readr::read_tsv(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), col_names=T, col_types='cii'), logTransform=F,plot=T,verbose=F) {
 
-  if (is.null(blacklist) | !is.data.frame(blacklist)) 
-    blacklist = readr::read_tsv(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), col_names=T, col_types='cii')  
+  intPloidy=F
   
   if (ncol(blacklist) < 3)
     stop('Blacklisted regions missing or incorrectly formatted.\nExpected columnes: chromosome start end')

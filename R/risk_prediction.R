@@ -54,12 +54,9 @@ tileSamples<-function(obj, be.model=NULL, scale=T, MARGIN=2, verbose=T) {
     be.model = be.model.fit(model=fitV, s=lambda, tile.size=5e6, 
                             tile.mean=z.mean, arms.mean=z.arms.mean, tile.sd=z.sd, arms.sd=z.arms.sd, 
                             cx.mean=mn.cx, cx.sd=sd.cx, per.pt.nzcoefs = nzcoefs, cvRR = coef_cv_RR, pconf = pred.confidence)
-    message('Using internal glmnet model.')
   } else {
     if (length(be.model$arms.mean) != length(be.model$arms.sd)) stop('Arm means/sd do not match in length') 
     if (length(be.model$tile.mean) != length(be.model$tile.sd)) stop('Tile means/sd do not match in length') 
-
-    warning("Using EXTERNAL glmnet model. Validation not provided.")
   }
 
   # Tile, scale, then merge segmented values into 5Mb and arm-length windows across the genome.
@@ -115,10 +112,8 @@ predictRisk<-function(obj, merged.tiles, be.model = NULL, verbose=T) {
     be.model = be.model.fit(model=fitV, s=lambda, tile.size=5e6, 
                             tile.mean=z.mean, arms.mean=z.arms.mean, tile.sd=z.sd, arms.sd=z.arms.sd, 
                             cx.mean=mn.cx, cx.sd=sd.cx, per.pt.nzcoefs = nzcoefs, cvRR = coef_cv_RR, pconf = pred.confidence)
-    message('Using internal glmnet model.')
-  } else {
-    warning("Using EXTERNAL glmnet model. Validation not provided.")
-  }
+    #message('Using internal glmnet model.')
+  } 
 
   sparsed_test_data = Matrix(data=0, nrow=nrow(merged.tiles$tiles),  ncol=ncol(merged.tiles$tiles),
                              dimnames=list(rownames(merged.tiles$tiles),colnames(merged.tiles$tiles)), sparse=T)
@@ -131,11 +126,9 @@ predictRisk<-function(obj, merged.tiles, be.model = NULL, verbose=T) {
   RR = predict(be.model$fit, newx=sparsed_test_data, s=be.model$lambda, type='link')
   probs = pi.hat(RR)
   
-  per.sample.preds = full_join(tibble('Sample'=rownames(probs), 
-                                      'Probability'=round(probs[,1],2), 
-                                      'Relative Risk'=RR[,1],
-                                      'Risk'=sapply(probs[,1], .risk, be.model)), 
-                               obj$sample.info %>% dplyr::filter(Sample %in% as.character(sampleResiduals(obj) %>% dplyr::filter(Pass) %>% dplyr::select(sample) %>% pull) ), 
+  per.sample.preds = full_join(tibble('Sample'=rownames(probs), 'Probability'=round(probs[,1],2), 
+                                      'Relative Risk'=RR[,1], 'Risk'=sapply(probs[,1], .risk, be.model)), 
+                               obj$sample.info %>% dplyr::filter(Sample %in% as.character(sampleResiduals(obj) %>% dplyr::filter(Pass) %>% dplyr::select(matches('sample')) %>% pull) ), 
                                by='Sample')
   
   per.endo.preds = .setUpRxTablePerEndo(per.sample.preds, 'max', verbose) %>% rowwise() %>% mutate( Risk=.risk(Probability,be.model))

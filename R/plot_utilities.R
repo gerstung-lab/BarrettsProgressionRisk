@@ -241,7 +241,7 @@ copyNumberMountainPlot<-function(brr,annotate=T, legend=T,  as=c('plot','list'))
   coefs = bind_cols(get.loc(t(coefs)), 'coef' = coefs)
   
   cvRR = brr$be.fit$cvRR
-  if (is.data.frame(brr$be.fit$cvRR)) cvRR = brr$be.fit$cvRR[,'cvRR']
+  if (is.data.frame(cvRR) | is.matrix(cvRR)) cvRR = brr$be.fit$cvRR[,'cvRR']
   
   cvdf = bind_cols( get.loc(t(brr$be.fit$cvRR)), 'cvRR' = cvRR)
   
