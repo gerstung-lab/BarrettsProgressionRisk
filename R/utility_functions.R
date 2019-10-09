@@ -39,14 +39,13 @@ chrInfo<-function(chrs =  c(1:22, 'X','Y'), prefix='chr', build='hg19', file=NUL
 
   if (!is.null(file) && file.exists(file)) {
     #message(paste("Reading chromosome information for build ",build," from local file.", sep=''))
-    chr.lengths = read.table(file, header=T, sep='\t', stringsAsFactors=F)
+    chr.lengths = read_tsv(file, col_types = c('cdddd'))
   } else {
-    chr.lengths = read.table(paste('http://genome.ucsc.edu/goldenpath/help/', build, '.chrom.sizes',sep='') , sep='\t', header=F)
-    colnames(chr.lengths) = c('chrom','chr.length')
-    chr.lengths = subset(chr.lengths, chrom %in% paste(prefix,chrs, sep=''))
-    chr.lengths$chrom = factor(chr.lengths$chrom, levels=paste(prefix,chrs, sep=''))
-    chr.lengths = arrange(chr.lengths, chrom)
-
+    chr.lengths = read_tsv(paste('http://genome.ucsc.edu/goldenpath/help/', build, '.chrom.sizes',sep=''), col_names = F, col_types = 'cd') %>% set_names(c('chrom','chr.length'))
+    chr.lengths = chr.lengths %>% dplyr::filter(chrom %in% paste(prefix,chrs, sep='')) %>% 
+      mutate(chrom = factor(chrom, levels=paste(prefix,chrs,sep=''))) %>%
+      arrange(chrom)
+    
     cytoband.url = paste('http://hgdownload.cse.ucsc.edu/goldenPath',build,'database/cytoBand.txt.gz',sep='/')
     cytoband.file = paste(.Platform$file.sep,'tmp', paste(build,basename(cytoband.url),sep='_'), sep='/')
 
@@ -55,12 +54,11 @@ chrInfo<-function(chrs =  c(1:22, 'X','Y'), prefix='chr', build='hg19', file=NUL
     }, error = function(e)
       stop(paste("Could not download", cytoband.url, "\n", e))
     )
+    cytobands = read_tsv(cytoband.file, col_names = F, col_types = 'cddcc') %>%
+      set_names( c('chrom','start','end','band','attr') ) %>%
+      mutate(chrom = factor(chrom, levels=paste(prefix,chrs, sep='')))
 
-    cytobands = read.table(cytoband.file, sep='\t', header=F)
-    colnames(cytobands) = c('chrom','start','end','band','attr')
-    cytobands$chrom = factor(cytobands$chrom, levels=paste(prefix,chrs, sep=''))
-
-    centromeres = subset(cytobands, attr == 'acen')
+    centromeres = cytobands %>% dplyr::filter(attr == 'acen')
 
     chr.lengths = cbind(chr.lengths,  centromeres %>% dplyr::group_by(chrom) %>% dplyr::summarise(
       chr.cent=mean(range(start, end)),
