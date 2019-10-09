@@ -294,10 +294,20 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=readr::read_tsv(sys
   tmp.seg = tempfile("segments.",cache.dir,".Rdata")
   save.image(file=tmp.seg)
 
-  if (!is.null(min.probes) & !is.na(min.probes)) {
-    probes = which(res$n.probes < min.probes)
-    if (verbose) message(paste(round(length(probes)/nrow(res), 3), 'segments with fewer than', min.probes, '"probes"'))
+  prb<-function(x) {
+    x = na.omit(x)
+    probes = which(x$n.probes < min.probes)
+    round(length(probes)/nrow(x),3)
   }
+  # if (verbose) message(paste(round(length(probes)/nrow(res), 3), 'segments with fewer than', min.probes, '"probes"'))
+    
+    prb.ratio = sapply(smps, function(s)  prb(res %>% dplyr::select(chrom, n.probes, matches(s))) )
+if (verbose) {
+      message(paste0('Per sample ratio of segments with fewer than ', min.probes, ' "probes" - '))
+      print(prb.ratio)
+    }
+    
+  probes = which(res$n.probes < min.probes)
   if (length(probes) > 0) res = res[-probes,]
 
   resids = .calculateSegmentResiduals(res, data, verbose=verbose)
@@ -535,8 +545,10 @@ tileSegments<-function(swgsObj, size=5e6, verbose=T) {
   resids = list()
   for (i in 1:cols) {
     sample.name = colnames(observedCN)[-c(1:2)][i]
-    pred.seg = na.omit(calcSegments[,c(1:5,(5+i))])
+    #pred.seg = na.omit(calcSegments[,c(1:5,(5+i))])
 
+    pred.seg = na.omit(calcSegments %>% dplyr::select(chrom, arm, start.pos, end.pos, n.probes, !!sample.name))
+    
     resvar = lapply(1:nrow(pred.seg), function(j) {
       seg = pred.seg[j,]
       rows = which(observedCN$start >= seg[['start.pos']] & observedCN$start <= seg[['end.pos']] )
