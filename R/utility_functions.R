@@ -60,10 +60,11 @@ chrInfo<-function(chrs =  c(1:22, 'X','Y'), prefix='chr', build='hg19', file=NUL
 
     centromeres = cytobands %>% dplyr::filter(attr == 'acen')
 
-    chr.lengths = cbind(chr.lengths,  centromeres %>% dplyr::group_by(chrom) %>% dplyr::summarise(
+    chr.lengths = left_join(chr.lengths, centromeres %>% dplyr::group_by(chrom) %>% dplyr::summarise(
       chr.cent=mean(range(start, end)),
       cent.gap = (max(end)-min(start))/2
-    ))
+    ), by='chrom')
+    
     chr.lengths$genome.length = cumsum(as.numeric(chr.lengths$chr.length))
   }
 
@@ -71,13 +72,9 @@ chrInfo<-function(chrs =  c(1:22, 'X','Y'), prefix='chr', build='hg19', file=NUL
     file = paste(.Platform$file.sep, 'tmp', .Platform$file.sep, build, '_info.txt', sep='')
 
   write.table(chr.lengths, sep='\t', row.names=F, file=file)
-  
-  indecies = regexpr(paste(chrs,collapse='|'), chr.lengths$chrom, perl=T)
-  for (i in 1:length(indecies)) {
-    chr.lengths$chr[i] = sub(substr(chr.lengths$chrom[i], 1,indecies[i]-1), '',chr.lengths$chrom[i])
-  }
-  chr.lengths$chr = factor(chr.lengths$chr, levels=chrs, ordered = T)
 
+  chr.lengths = chr.lengths %>% mutate(chr = sub(prefix, '', chrom)) %>% mutate(chr = factor(chr, levels=chrs, ordered=T))
+    
   return(as_tibble(chr.lengths))
 }
 
