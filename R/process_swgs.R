@@ -271,6 +271,7 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=readr::read_tsv(sys
       res = copynumber::pcf( data=data, gamma=gamma2*sdev, fast=F, verbose=verbose, return.est=F, assembly=build)
       colnames(res)[grep('mean', colnames(res))] = colnames(raw.data)[countCols]
       res$sampleID = NULL
+      segs[smps[1]] = res
   } else if (!multipcf) {
     if (verbose) message(paste("Segmenting multiple samples individually gamma=",round(gamma2*sdev,2)))
     
@@ -304,7 +305,12 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=readr::read_tsv(sys
   
   if (intPloidy) res = res %>% dplyr::mutate_at(vars(info$Sample), list( ~round(.,1) ))
 
-  coverage = sapply(segs, function(res) round(sum(as.numeric(with(res, end.pos-start.pos)),na.rm=T)/(chr.info %>% filter(chr == 22) %>% select(genome.length) %>% pull),3) )
+  cvg<-function(x) {
+    x = na.omit(x)
+    round(sum(as.numeric(with(x, end.pos-start.pos)),na.rm=T)/(chr.info %>% filter(chr == 22) %>% select(genome.length) %>% pull),3)
+  }
+  
+  coverage = sapply(smps, function(s)  cvg(res %>% dplyr::select(chrom, start.pos, end.pos, matches(s))) )
   #coverage = round(sum(as.numeric(with(res, end.pos-start.pos)),na.rm=T)/chr.info[22,'genome.length'],3)
   if (verbose) message(paste(round(mean(coverage),2), 'of the genome covered by segments.'))
   
