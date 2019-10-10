@@ -28,7 +28,7 @@ runQDNAseq<-function(bam=NULL,path=NULL,outputPath=NULL, minMapQ=37, binsize=15)
 
   # write bin annotations
   pData(bins) %>%
-    dplyr::mutate_at(vars(start, end), funs(as.integer)) %>%
+    dplyr::mutate_at(vars(start, end), list(as.integer)) %>%
     write_tsv(paste(outputPath,paste0(binsize,"kbp.txt"),sep='/'))
   
   # process BAM files obtaining read counts within bins
@@ -78,7 +78,7 @@ runQDNAseq<-function(bam=NULL,path=NULL,outputPath=NULL, minMapQ=37, binsize=15)
   fittedReadCounts <- assayData(readCountsCorrected)$fit %>%
     as.data.frame %>%
     rownames_to_column(var = "location") %>%
-    mutate_if(is.numeric, funs(round(., digits = 3)))
+    mutate_if(is.numeric, list(~round(., digits = 3)))
   features %>%
     dplyr::left_join(fittedReadCounts, by = "location") %>%
     write_tsv(paste(outputPath,"fittedReadCounts.txt",sep='/'))
