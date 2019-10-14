@@ -39,7 +39,11 @@ chrInfo<-function(chrs =  c(1:22, 'X','Y'), prefix='chr', build='hg19', file=NUL
 
   if (!is.null(file) && file.exists(file)) {
     #message(paste("Reading chromosome information for build ",build," from local file.", sep=''))
-    chr.lengths = read_tsv(file, col_types = c('cdddd'))
+    chr.lengths = read_tsv(file, col_types = cols( chrom = col_character(),
+                                                   chr.length = col_double(),
+                                                   chr.cent = col_double(),
+                                                   cent.gap = col_double(),
+                                                   genome.length = col_double()))
   } else {
     chr.lengths = read_tsv(paste('http://genome.ucsc.edu/goldenpath/help/', build, '.chrom.sizes',sep=''), col_names = F, col_types = 'cd') %>% set_names(c('chrom','chr.length'))
     chr.lengths = chr.lengths %>% dplyr::filter(chrom %in% paste(prefix,chrs, sep='')) %>% 

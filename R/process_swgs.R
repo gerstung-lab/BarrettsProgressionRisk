@@ -265,13 +265,14 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=readr::read_tsv(sys
   sdev = exp(mean(log(sdevs[!is.na(sdevs)])))
   if(verbose) message(paste('sdev=',signif(sdev,3),sep=''))
 
+#  segs = list()
   ## TODO Using IntPloidy we may want to only pcf a single sample at a time
   if (ncol(data) < 4) { # Single sample
       if (verbose) message(paste("Segmenting single sample gamma=",round(gamma2*sdev,2)))
       res = copynumber::pcf( data=data, gamma=gamma2*sdev, fast=F, verbose=verbose, return.est=F, assembly=build)
       colnames(res)[grep('mean', colnames(res))] = colnames(raw.data)[countCols]
       res$sampleID = NULL
-      segs[smps[1]] = res
+#      segs[smps[1]] = res
   } else if (!multipcf) {
     if (verbose) message(paste("Segmenting multiple samples individually gamma=",round(gamma2*sdev,2)))
     
@@ -289,6 +290,7 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=readr::read_tsv(sys
   } else { # for most we have multiple samples
       message(paste("Segmenting", (ncol(data)-2), "samples gamma=",round(gamma2*sdev,2)))
       res = copynumber::multipcf( data=data, gamma=gamma2*sdev, fast=F, verbose=verbose, return.est=F, assembly=build)
+      
   }
 
   tmp.seg = tempfile("segments.",cache.dir,".Rdata")
