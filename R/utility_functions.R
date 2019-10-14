@@ -33,12 +33,16 @@ chrInfo<-function(chrs =  c(1:22, 'X','Y'), prefix='chr', build='hg19', file=NUL
   local_file =  paste(build,'_info.txt',sep='')
   
   local_file = system.file("extdata", local_file, package="BarrettsProgressionRisk")
+  tmp_file = paste(.Platform$file.sep, 'tmp', .Platform$file.sep, build, '_info.txt', sep='')
   
-  if (is.null(file) & file.exists(local_file))
+  if (is.null(file) & file.exists(local_file) & file.size(local_file) >= 1000) {
     file = local_file
+  } else if (file.exists(tmp_file) & file.size(tmp_file) >= 1000) {
+    file = tmp_file
+  }
 
   if (!is.null(file) && file.exists(file)) {
-    #message(paste("Reading chromosome information for build ",build," from local file.", sep=''))
+    message(paste0("Reading chromosome information for build ",build," from ",file))
     chr.lengths = read_tsv(file, col_types = cols( chrom = col_character(),
                                                    chr.length = col_double(),
                                                    chr.cent = col_double(),
