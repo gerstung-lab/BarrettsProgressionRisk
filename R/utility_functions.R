@@ -43,13 +43,13 @@ chrInfo<-function(chrs =  c(1:22, 'X','Y'), prefix='chr', build='hg19', file=NUL
 
   if (!is.null(file) && file.exists(file)) {
     message(paste0("Reading chromosome information for build ",build," from ",file))
-    chr.lengths = read_tsv(file, col_types = cols( chrom = col_character(),
-                                                   chr.length = col_double(),
-                                                   chr.cent = col_double(),
-                                                   cent.gap = col_double(),
-                                                   genome.length = col_double()))
+    
+    chr.lengths = read.table(file, header = T, sep='\t', colClasses = c(character(), numeric(), numeric(), numeric(), numeric()), stringsAsFactors = F) %>% as_tibble()
+    
   } else {
-    chr.lengths = read_tsv(paste('http://genome.ucsc.edu/goldenpath/help/', build, '.chrom.sizes',sep=''), col_names = F, col_types = 'cd') %>% set_names(c('chrom','chr.length'))
+    chr.lengths = read.table(paste('http://genome.ucsc.edu/goldenpath/help/', build, '.chrom.sizes',sep=''), header = F, sep='\t', colClasses = c(character(), numeric()), stringsAsFactors = F) %>% 
+      as_tibble() %>% set_names(c('chrom','chr.length'))
+    
     chr.lengths = chr.lengths %>% dplyr::filter(chrom %in% paste(prefix,chrs, sep='')) %>% 
       mutate(chrom = factor(chrom, levels=paste(prefix,chrs,sep=''))) %>%
       arrange(chrom)
@@ -62,10 +62,10 @@ chrInfo<-function(chrs =  c(1:22, 'X','Y'), prefix='chr', build='hg19', file=NUL
     }, error = function(e)
       stop(paste("Could not download", cytoband.url, "\n", e))
     )
-    cytobands = read_tsv(cytoband.file, col_names = F, col_types = 'cddcc') %>%
-      set_names( c('chrom','start','end','band','attr') ) %>%
+    cytobands = read.table(cytoband.file, header=F, colClasses = c(character(), numeric(), numeric(), character(), character()), stringsAsFactors = F ) %>% 
+      as_tibble() %>% set_names( c('chrom','start','end','band','attr') ) %>%
       mutate(chrom = factor(chrom, levels=paste(prefix,chrs, sep='')))
-
+        
     centromeres = cytobands %>% dplyr::filter(attr == 'acen')
 
     chr.lengths = left_join(chr.lengths, centromeres %>% dplyr::group_by(chrom) %>% dplyr::summarise(
