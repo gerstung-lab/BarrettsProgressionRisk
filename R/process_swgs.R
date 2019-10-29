@@ -319,7 +319,7 @@ if (verbose) {
 
   cvg<-function(x) {
     x = na.omit(x)
-    round(sum(as.numeric(with(x, end.pos-start.pos)),na.rm=T)/(chr.info %>% filter(chr == 22) %>% select(genome.length) %>% pull),3)
+    round(sum(as.numeric(with(x, end.pos-start.pos)),na.rm=T)/(chr.info %>% filter(chr == 22) %>% dplyr::select(genome.length) %>% pull),3)
   }
   
   coverage = sapply(smps, function(s)  cvg(res %>% dplyr::select(chrom, start.pos, end.pos, matches(s))) )
