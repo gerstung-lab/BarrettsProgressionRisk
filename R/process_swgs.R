@@ -210,7 +210,7 @@ qdna.to.probes<-function(kb) {
 #'
 #' @author skillcoyne
 #' @export
-segmentRawData<-function(info, raw.data, fit.data, blacklist=readr::read_tsv(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), col_names=T, col_types='cii'), gamma2=250, kb=15, cutoff=0.015, multipcf=T, logTransform=F, cache.dir=getcachedir(), build='hg19', verbose=T) {
+segmentRawData<-function(info, raw.data, fit.data, blacklist=readr::read_tsv(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), col_names=T, col_types='cii'), gamma2=250, kb=50, cutoff=0.008, multipcf=T, logTransform=F, cache.dir=getcachedir(), build='hg19', verbose=T) {
   
   intPloidy=F  # This wasn't terribly useful. Leaving the code in place for the moment but setting it to false by default.
   if (intPloidy & cutoff < 0.03) cutoff = cutoff*2

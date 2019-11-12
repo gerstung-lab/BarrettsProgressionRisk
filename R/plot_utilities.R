@@ -142,17 +142,21 @@ showModelPredictions<-function(type='P') {
 
 #' Per sample over time tile risk plot
 #' @name patientRiskTilesPlot
-#' @param brr BarrettsRiskRx object or tibble with Risk and Endoscopy columns
+#' @param brr BarrettsRiskRx object or tibble with Risk column
+#' @param col time column name, default 'Endoscopy'
+#' @param direction to plot the time, fwd or rev  (forward or reverse)
 #' @return ggplot object
 #'
 #' @author skillcoyne
 #' @export
-patientRiskTilesPlot<-function(brr) {
+patientRiskTilesPlot<-function(brr, col='Endoscopy', direction=c('fwd','rev')) {
+  dir = match.arg(direction)  
+  
   if (length(which(class(brr) %in% c('BarrettsRiskRx'))) > 0) {
     preds = brr$per.sample
   } else {
     preds = brr
-    if (length(which(colnames(preds) %in% c('Endoscopy', 'Risk'))) < 2) stop("BarrettsRiskRx object required, or tibble with Endoscopy (numeric/date) and Risk (Low,Moderate,High) columns")
+    if (length(which(colnames(preds) %in% c(col, 'Risk'))) < 2) stop("BarrettsRiskRx object required, or tibble with numeric/date and Risk (Low,Moderate,High) columns")
   }
 
   if ('GEJ.Distance' %in% colnames(preds) & !is.factor(preds$GEJ.Distance)) {
@@ -160,18 +164,22 @@ patientRiskTilesPlot<-function(brr) {
   } else if (!'GEJ.Distance' %in% colnames(preds)) {
     preds$GEJ.Distance = 1
   }
-  preds$Endoscopy = factor(preds$Endoscopy, ordered=T)
+  preds = preds %>% mutate_if(is.numeric, list(~factor(.,ordered=T)))
   
-  p = ggplot(preds, aes(Endoscopy, GEJ.Distance)) +
-    geom_tile(aes(fill=Risk), color='white') + scale_fill_manual(values=riskColors(), limits=names(riskColors())) +
-    labs(x='Endoscopy Date',y='Esophageal Location (GEJ...)')
+  p = ggplot(preds, aes_string(col, 'GEJ.Distance')) +
+    geom_tile(aes(fill=Risk), color='white',size=2) + scale_fill_manual(values=riskColors(), limits=names(riskColors())) +
+    labs(y='Esophageal Location (GEJ...)')
+  
+  if (dir == 'rev') p = p + scale_x_discrete(limits=rev(levels(preds[[col]])))
 
   if ('Pathology' %in% colnames(preds)) {
     p = p + geom_point(aes(shape=Pathology), fill='white', color='white', size=8) + 
         scale_shape_manual(values=c(1,0,15,24,25), limits=c('NDBE','ID','LGD','HGD','IMC'), labels=c('NDBE','ID','LGD','HGD','IMC'), guide=guide_legend(override.aes=list(fill='white', color='white')))
     }
   
-  p + theme_minimal() + theme(legend.key=element_rect(fill='grey39'), panel.background=element_rect(colour = 'black'), panel.grid.major=element_blank(), panel.spacing = unit(0.2, 'lines'), panel.border = element_rect(color="black", fill=NA, size=0.5), legend.position = 'bottom'  ) 
+  if ('Patient' %in% colnames(preds)) p = p + labs(title=unique(preds$Patient))
+  
+  p + theme_bw() + theme(legend.key=element_rect(fill='grey39'), panel.background=element_rect(colour = 'black'), panel.grid.major=element_blank(), panel.spacing = unit(0.2, 'lines'), panel.border = element_rect(color="black", fill=NA, size=0.5), legend.position = 'bottom'  ) 
 }
 
 
