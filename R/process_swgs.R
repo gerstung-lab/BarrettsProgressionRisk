@@ -398,19 +398,28 @@ scoreCX <- function(df, MARGIN) {
 #' @author skillcoyne
 #' @export
 tileSegments<-function(swgsObj, size=5e6, verbose=T) {
-  if (class(swgsObj)[1] != 'SegmentedSWGS')
-    stop("SegmentedSWGS object missing")
+  checkErr = T
+  if (class(swgsObj)[1] != 'SegmentedSWGS') {
+    warning("SegmentedSWGS object missing, per-tile errors and sample QC cannot be assessed.")
+    checkErr = F
+    data = swgsObj
+    build = 'hg19'
+    failed = NULL
+  } else {
+    data = swgsObj$seg.vals
+    failed = sampleResiduals(swgsObj) %>% dplyr::filter(!Pass)
+    build = swgsObj$chr.build.info
+    if (nrow(failed) == nrow(sampleResiduals(swgsObj) ) )
+      stop('All samples failed QC, no data available for prediction.')
+  }
   
   if (!is.numeric(size) & size != 'arms')
     stop("Size must be numeric, or 'arms'")
 
-  data = swgsObj$seg.vals
-  failed = sampleResiduals(swgsObj) %>% dplyr::filter(!Pass)
+  if (checkErr) {
+    resids = swgsObj$segment.residual.MSE[as.character((swgsObj$residuals %>% dplyr::filter(Pass) %>% dplyr::select(matches('sample')) %>% pull))] 
+  }
   
-  if ( nrow(failed) == nrow(sampleResiduals(swgsObj) ) )
-    stop('All samples failed QC, no data available for prediction.')
-
-  resids = swgsObj$segment.residual.MSE[as.character((swgsObj$residuals %>% dplyr::filter(Pass) %>% dplyr::select(matches('sample')) %>% pull))] 
   if (!is_tibble(data)) data = as_tibble(data)
   
   #mse = mse[,intersect(colnames(data), colnames(mse))]
@@ -426,7 +435,7 @@ tileSegments<-function(swgsObj, size=5e6, verbose=T) {
   # No sex chromosomes
   data = data %>% filter(!!sym(chrCol) %in% c(1:22) )
   
-  tiles = .tile.genome(size, chrInfo(build=swgsObj$chr.build.info), allosomes=length(which(grepl('X|Y', unique(data[[chrCol]])))) > 0)
+  tiles = .tile.genome(size, chrInfo(build=build), allosomes=length(which(grepl('X|Y', unique(data[[chrCol]])))) > 0)
   mergedDf = (do.call(rbind, lapply(tiles, function(tile) {
     cbind('chr'=as.character(seqnames(tile)), as.data.frame(ranges(tile))[1:2])
   }) ))
@@ -459,13 +468,15 @@ tileSegments<-function(swgsObj, size=5e6, verbose=T) {
       # weight means by the coverage of the bin
       values = apply(GenomicRanges::elementMetadata(segments), 2, weighted.mean, w=weights, na.rm=T)
 
-      vMSE = apply(t(do.call(rbind, lapply(resids, function(sample) {
-        sapply(sample[subjectHits(curov[queryHits(curov) == i])], sd)
-      }))),2,weighted.mean,weights)
+      if (checkErr) {
+        vMSE = apply(t(do.call(rbind, lapply(resids, function(sample) {
+          sapply(sample[subjectHits(curov[queryHits(curov) == i])], sd)
+        }))),2,weighted.mean,weights)
+      }
 
       #      vMSE = apply(GenomicRanges::elementMetadata(segMSE), 2, weighted.mean, w=weights, na.rm=T)
       mergedDf[rows, names(values)] = values
-      errorDf[rows, names(vMSE)] = vMSE
+      if (checkErr) errorDf[rows, names(vMSE)] = vMSE
     }
   }
 
@@ -473,20 +484,24 @@ tileSegments<-function(swgsObj, size=5e6, verbose=T) {
     message(paste("Mean number of CN segments per genome bin:", round(mean(meanSegs, na.rm=T), 2), "median:", round(median(meanSegs, na.rm=T), 2)))
 
   rownames(mergedDf) = paste(mergedDf$chr, ':', mergedDf$start, '-', mergedDf$end, sep='')
-  rownames(errorDf) = paste(errorDf$chr, ':', errorDf$start, '-', errorDf$end, sep='')
   mergedDf[,c(1:3)] = NULL
-  errorDf[,c(1:3)] = NULL
-
+  if (checkErr) {
+    rownames(errorDf) = paste(errorDf$chr, ':', errorDf$start, '-', errorDf$end, sep='')
+    errorDf[,c(1:3)] = NULL
+  }
+  
   # deal with NA values
   mergedDf = apply(mergedDf,2, function(x) {
     x[is.na(x)] = median(x,na.rm=T)
     return(x)
   })
 
-  errorDf = apply(errorDf,2, function(x) {
-    x[is.na(x)] = median(x,na.rm=T)
-    return(x)
-  })
+  if (checkErr) {
+    errorDf = apply(errorDf,2, function(x) {
+      x[is.na(x)] = median(x,na.rm=T)
+      return(x)
+    })
+  }
   
   return(list('tiles'=t(mergedDf), 'error'=t(errorDf)))
 }

@@ -217,7 +217,9 @@ copyNumberMountainPlot<-function(brr,annotate=T, legend=T,  as=c('plot','list'))
     stop("BarrettsRiskRx required")
   rettype = match.arg(as)
   
-  mp = .mountainPlots(brr,annotate)
+  #mp = .mountainPlots(brr,annotate)
+  mp = mountainPlots(brr$tiles, as.matrix(coef(brr$be.fit$fit, brr$be.fit$lambda)), 
+                      brr$be.fit$cvRR, brr$segmented$chr.build.info, annotate=T) 
   ht = length(mp$plot.list)*2
   
   if (rettype == 'list') {
@@ -237,31 +239,35 @@ copyNumberMountainPlot<-function(brr,annotate=T, legend=T,  as=c('plot','list'))
 
 
 
-.mountainPlots<-function(brr,annotate=T) {
+mountainPlots<-function(tiles, coefs, cvRR, build, annotate=T) {
   pal = c('#238B45', 'grey','#6A51A3')
-  chr.info = chrInfo(build=brr$segmented$chr.build.info)
+  chr.info = chrInfo(build=build)
   
-  samples = rownames(brr$tiles)
-  locs = get.loc(brr$tiles[,-ncol(brr$tiles),drop=F])
+  samples = rownames(tiles)
+  locs = get.loc(tiles[,-ncol(tiles),drop=F])
 
-  coefs =  as.matrix(coef(brr$be.fit$fit, brr$be.fit$lambda))
-  coefs = coefs[which(coefs != 0),][-1]
-  coefs = bind_cols(get.loc(t(coefs)), 'coef' = coefs)
+  #coefs =  as.matrix(coef(brr$be.fit$fit, brr$be.fit$lambda))
+  if (!is.null(coefs)) {
+    coefs = coefs[which(coefs != 0),][-1]
+    coefs = bind_cols(get.loc(t(coefs)), 'coef' = coefs)
   
-  cvRR = brr$be.fit$cvRR
-  if (is.data.frame(cvRR) | is.matrix(cvRR)) cvRR = brr$be.fit$cvRR[,'cvRR']
+    #cvRR = brr$be.fit$cvRR
+    if (is.data.frame(cvRR) | is.matrix(cvRR)) cvRR = brr$be.fit$cvRR[,'cvRR']
   
-  cvdf = bind_cols( get.loc(t(brr$be.fit$cvRR)), 'cvRR' = cvRR)
+    cvdf = bind_cols( get.loc(t(brr$be.fit$cvRR)), 'cvRR' = cvRR)
   
-  cvdf = full_join(cvdf, coefs, by=c('chr','start','end'))
+    cvdf = full_join(cvdf, coefs, by=c('chr','start','end'))
+  }
   
   plist = list()
   for (sample in samples) {
-    
-    df = bind_cols(locs,tibble('sample'=brr$tiles[sample, -ncol(brr$tiles)]))
+    df = bind_cols(locs,tibble('sample'=tiles[sample, -ncol(tiles)]))
 
     melted = as_tibble(reshape2::melt(id.vars=c('chr','start','end'), df))
-    melted = as_tibble(left_join (left_join(melted,chr.info[,c('chr','chr.length')],by='chr'),cvdf, by=c('chr','start','end')) )
+    melted = left_join(melted,chr.info[,c('chr','chr.length')],by='chr')
+    if (!is.null(coefs)) {
+      melted = as_tibble(left_join(melted,cvdf, by=c('chr','start','end')) )
+    }
 
     arms = melted %>% filter(end-start > median(melted$end-melted$start)*2)
     segs = melted %>% filter(end-start <= median(melted$end-melted$start)*2)
@@ -277,19 +283,21 @@ copyNumberMountainPlot<-function(brr,annotate=T, legend=T,  as=c('plot','list'))
     }
   
     segs = segs %>% rowwise() %>% dplyr::mutate( 
-      'CN'=cn(value,c(-1,1)),
-      'annotate'=ifelse(!is.na(coef),cn(value,c(0,0)),'norm')
+      CN = cn(value,c(-1,1)),
+      annotate = ifelse(!is.na(coef),cn(value,c(0,0)),'norm'),
+    ) %>% mutate(
+      CN = factor(CN, levels = c('loss','norm','gain')),
+      annotate = factor(annotate, levels = c('loss','norm','gain'))
     )
-    segs$CN = factor(segs$CN, levels = c('loss','norm','gain'))
-    segs$annotate = factor(segs$annotate, levels = c('loss','norm','gain'))
 
     arms = arms %>% rowwise() %>% dplyr::mutate( 
-      'CN'=cn(value,c(-1,1)),
-      'annotate'=ifelse(!is.na(coef),cn(value,c(0,0)),'norm')
-    ) %>% filter(!is.na(coef))
-    arms$CN = factor(arms$CN, levels = c('loss','norm','gain'))
-    arms$annotate = factor(arms$annotate, levels = c('loss','norm','gain'))
-    
+      CN = cn(value,c(-1,1)), 
+      annotate = ifelse(!is.na(coef),cn(value,c(0,0)),'norm')) %>% 
+      filter(!is.na(coef)) %>% mutate(
+        CN = factor(CN, levels = c('loss','norm','gain')),
+        annotate = factor(annotate, levels = c('loss','norm','gain'))
+      )
+
     p = ggplot(segs, aes(x=chr.length)) + facet_grid(~chr, scales='free_x', space='free_x') 
 
     if (!annotate) {
