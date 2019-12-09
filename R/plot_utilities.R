@@ -252,9 +252,9 @@ mountainPlots<-function(tiles, coefs, cvRR, build, annotate=T) {
     coefs = bind_cols(get.loc(t(coefs)), 'coef' = coefs)
   
     #cvRR = brr$be.fit$cvRR
-    if (is.data.frame(cvRR) | is.matrix(cvRR)) cvRR = brr$be.fit$cvRR[,'cvRR']
+    if (is.data.frame(cvRR) | is.matrix(cvRR)) cvRR = cvRR[,'cvRR']
   
-    cvdf = bind_cols( get.loc(t(brr$be.fit$cvRR)), 'cvRR' = cvRR)
+    cvdf = bind_cols( get.loc(t(cvRR)), 'cvRR' = cvRR)
   
     cvdf = full_join(cvdf, coefs, by=c('chr','start','end'))
   }

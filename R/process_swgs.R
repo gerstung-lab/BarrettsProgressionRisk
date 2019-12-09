@@ -290,7 +290,6 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=readr::read_tsv(sys
   } else { # for most we have multiple samples
       message(paste("Segmenting", (ncol(data)-2), "samples gamma=",round(gamma2*sdev,2)))
       res = copynumber::multipcf( data=data, gamma=gamma2*sdev, fast=F, verbose=verbose, return.est=F, assembly=build)
-      
   }
 
   tmp.seg = tempfile("segments.",cache.dir,".Rdata")
@@ -301,13 +300,11 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=readr::read_tsv(sys
     probes = which(x$n.probes < min.probes)
     round(length(probes)/nrow(x),3)
   }
-  # if (verbose) message(paste(round(length(probes)/nrow(res), 3), 'segments with fewer than', min.probes, '"probes"'))
-    
-    prb.ratio = sapply(smps, function(s)  prb(res %>% dplyr::select(chrom, n.probes, matches(s))) )
-if (verbose) {
-      message(paste0('Per sample ratio of segments with fewer than ', min.probes, ' "probes" - '))
-      print(prb.ratio)
-    }
+  prb.ratio = sapply(smps, function(s)  prb(res %>% dplyr::select(chrom, n.probes, matches(s))) )
+  if (verbose) {
+    message(paste0('Per sample ratio of segments with fewer than ', min.probes, ' "probes" - '))
+    print(prb.ratio)
+  }
     
   probes = which(res$n.probes < min.probes)
   if (length(probes) > 0) res = res[-probes,]
