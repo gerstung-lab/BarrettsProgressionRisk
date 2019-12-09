@@ -35,14 +35,14 @@ pi.hat<-function(x) exp(x)/(1+exp(x))
 #' @export
 rxRules<-
   tibble(
-    'Rule' = c(1:4),
+    'Rule' = c(1:4,'None'),
     'Rx' = c('Immediate RFA', 'Recheck in 6-12 months',
-             'Recheck in 12-24 months','Regular surveillance in 3-5 years'),
+             'Recheck in 12-24 months','Regular surveillance in 3-5 years','N/A'),
     'Description' = c(
       'HGD or IMC diagnosis or more than one consecutive high risk predictions.',
       'One high risk prediction or an aberrant p53 IHC.',
       'One or more moderate risk predictions.',
-      'Two or more consecutive low risk predictions.')
+      'Two or more consecutive low risk predictions.','')
   )
 
 
@@ -127,11 +127,11 @@ predictRisk<-function(obj, merged.tiles, be.model = NULL, verbose=T) {
   probs = pi.hat(RR)
   
   per.sample.preds = full_join(tibble('Sample'=rownames(probs), 'Probability'=round(probs[,1],2), 
-                                      'Relative Risk'=RR[,1], 'Risk'=sapply(probs[,1], .risk, be.model)), 
+                                      'Relative Risk'=RR[,1], 'Risk'=sapply(probs[,1], .risk, be.model$pred.confidence)), 
                                obj$sample.info %>% dplyr::filter(Sample %in% as.character(sampleResiduals(obj) %>% dplyr::filter(Pass) %>% dplyr::select(matches('sample')) %>% pull) ), 
                                by='Sample')
   
-  per.endo.preds = .setUpRxTablePerEndo(per.sample.preds, 'max', verbose) %>% rowwise() %>% mutate( Risk=.risk(Probability,be.model))
+  per.endo.preds = .setUpRxTablePerEndo(per.sample.preds, 'max', verbose) %>% rowwise() %>% mutate( Risk=.risk(Probability,be.model$pred.confidence))
   perEndoError = .setUpRxTablePerEndo(perSampleError, 'max', F) %>% dplyr::select('Endoscopy','Error')
   
   psp = list('per.endo'=per.endo.preds, 'per.sample'=per.sample.preds, 'segmented'=obj, 'per.sample.error'=perSampleError, 'per.endo.error'=perEndoError, 'tiles'=merged.tiles$tiles, 'be.fit' = be.model)
@@ -202,9 +202,9 @@ absoluteRiskCI<-function(psp, by=c('endoscopy','sample'), verbose=T) {
   
   preds = add_column(preds, 
               'CI.low'=low,
-             'Risk.low'=sapply(low, .risk),
+             'Risk.low'=sapply(low, .risk, be.model$pred.confidence),
              'CI.high'=high,
-             'Risk.high'=sapply(high, .risk))
+             'Risk.high'=sapply(high, .risk, be.model$pred.confidence))
   
   return(preds)
 }
@@ -323,7 +323,7 @@ adjustRisk <- function(brr, offset=c('mean','max','min'), by=c('endoscopy','samp
 
   adjustedRiskRx$Probability = 1/(1+exp(-RR+abs(offset)))
   adjustedRiskRx$`Relative Risk` = RR+offset
-  adjustedRiskRx$Risk = sapply(adjustedRiskRx$Probability, .risk)
+  adjustedRiskRx$Risk = sapply(adjustedRiskRx$Probability, .risk, be.model$pred.confidence)
 
   recommendations = .apply.rules(adjustedRiskRx,riskBy)
   
@@ -373,12 +373,12 @@ rx<-function(brr, by=c('endoscopy','sample')) {
   return(rules)
 }
 
-.apply.rules<-function(preds,riskBy) {
-  preds = preds %>% rowwise() %>% dplyr::mutate(Risk = .risk(Probability))
+.apply.rules<-function(preds,riskBy,pred.confidence) {
+  preds = preds %>% rowwise() %>% dplyr::mutate(Risk = .risk(Probability, pred.confidence))
   preds$Risk = factor(preds$Risk, levels=c('Low','Moderate','High'), ordered=T)
   
   p53Col = grep('p53', colnames(preds), value=T, ignore.case=T)
-  pathCol = grep('path', colnames(preds), value=T, ignore.case=T)
+  pathCol = grep('pathology', colnames(preds), value=T, ignore.case=T)
   
   # Consecutive after sorting by the selected column
   preds = preds %>% arrange(preds[[riskBy]])
@@ -403,7 +403,7 @@ rx<-function(brr, by=c('endoscopy','sample')) {
       rule = 4
     }
     
-    rules = add_row(rules, 'Time 1'=preds[[riskBy]][i], 'Time 2'=preds[[riskBy]][(i+1)], 'Rule'=as.integer(rule)  )
+    rules = add_row(rules, 'Time 1'=preds[[riskBy]][i], 'Time 2'=preds[[riskBy]][(i+1)], 'Rule'=rule  )
     if (i == nrow(preds)) break;
   }
   rules$Rx = sapply(rules$Rule, .rule.rx)
@@ -417,9 +417,9 @@ rx<-function(brr, by=c('endoscopy','sample')) {
 }
 
 
-.risk<-function(p, be.model) {
+.risk<-function(p, pred.confidence) {
   if (!is.numeric(p) | (p > 1 | p < 0) ) stop("Numeric probability between 0-1 required")
-  return(as.character(max(subset(be.model$pred.confidence, p <= r2 & p >= r1)$Risk)))
+  return(as.character(max(subset(pred.confidence, p <= r2 & p >= r1)$Risk)))
 }
 
 
