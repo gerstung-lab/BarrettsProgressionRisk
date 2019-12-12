@@ -224,8 +224,7 @@ copyNumberMountainPlot<-function(brr,annotate=T, legend=T,  as=c('plot','list'))
     stop("BarrettsRiskRx required")
   rettype = match.arg(as)
   
-  mp = BarrettsProgressionRisk:::mountainPlots(brr$tiles, as.matrix(coef(brr$be.model$fit, brr$be.model$lambda)), 
-                      brr$be.model$cvRR, brr$segmented$chr.build.info, annotate=T) 
+  mp = BarrettsProgressionRisk:::mountainPlots(brr$tiles, as.matrix(coef(brr$be.model$fit, brr$be.model$lambda)), brr$be.model$cvRR, brr$segmented$chr.build.info, annotate=T) 
   ht = length(mp$plot.list)*2
   
   if (rettype == 'list') {
@@ -259,7 +258,7 @@ mountainPlots<-function(tiles, coefs, cvRR, build, annotate=T) {
       mutate_at(vars(start, end), as.double) %>%       
       mutate(chr = factor(chr, levels=levels(locs$chr), ordered=T))
     
-    if (is.data.frame(cvRR) | is.matrix(cvRR)) cvRR = cvRR[,'cvRR']
+    #if (is.data.frame(cvRR) | is.matrix(cvRR)) cvRR = cvRR[,'cvRR']
   
     cvdf = cvRR %>% separate(label, c('chr','start','end'), sep=':|-', remove=F) %>%
       mutate_at(vars(start, end), as.double) %>%       

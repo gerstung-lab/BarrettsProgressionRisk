@@ -54,8 +54,11 @@ library(knitr)
 BarrettsProgressionRisk::runQDNAseq(bamPath='.', outputPath=<path to qdnaseq output>,  binsize=50)
 
 
-qdnaseq.path=<path to qdnaseq output>
-info.file=<path to per sample p53 IHC/pathology file>
+# qdnaseq.path=<path to qdnaseq output>
+qdnaseq.path='examples/'
+# info.file=<path to per sample p53 IHC/pathology file>
+info.file = 'example/endoscopy.xlsx'
+
 output.dir='~/tmp'
 
 options(warn = -1)

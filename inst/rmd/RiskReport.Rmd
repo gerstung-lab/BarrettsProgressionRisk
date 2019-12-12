@@ -13,7 +13,6 @@ params:
 ---
 
 ```{r setup, include=FALSE}
-
 library(BarrettsProgressionRisk)
 library(knitr)
 library(kableExtra)
@@ -43,6 +42,9 @@ if (length(samples) > 10)
 ```
 
 
+<center><b><i><p style="color:red">This report is for research purposes only</p></i></b></center>
+
+
 # Results {.tabset .tabset-fade .tabset-pills}
 
 ## Surveillance/Treatment Recommendations {.tabset .tabset-fade .tabset-pills}
@@ -67,7 +69,7 @@ recommendations %>%
 
 ### Risk Per Endoscopy
 
-```{r risk_endo, fig.height=4, fig.width=length(levels(pr$segmented$sample.info$Endoscopy))*2}
+```{r risk_endo, fig.height=4, fig.width=length(unique(pr$segmented$sample.info$Endoscopy))*2}
 printRisk <- function(x,low,high, risk='Unknown') {
   img = switch(risk, 
          'High'='img/Human_body_silhouette-RED.png',
@@ -114,7 +116,7 @@ table
 ```
 
 
-```{r risk_sample_plot, fig.height=2+length(unique(pr$segmented$sample.info$GEJ.Distance)*2), fig.width=2+length(levels(pr$segmented$sample.info$Endoscopy))*2}
+```{r risk_sample_plot, fig.height=2+length(unique(pr$segmented$sample.info$GEJ.Distance)*2), fig.width=2+length(unique(pr$segmented$sample.info$Endoscopy))*2}
 p = patientRiskTilesPlot(pr)
 
 legend = BarrettsProgressionRisk:::.get.legend(p)
