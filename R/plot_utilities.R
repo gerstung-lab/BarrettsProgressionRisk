@@ -84,8 +84,12 @@ plotCorrectedCoverage<-function(brr, as=c('plot','list')) {
 #' @author skillcoyne
 #' @export
 showPredictionCalibration<-function(df=NULL) {
-  if (is.null(df)) df = pred.confidence
+  if (is.null(df)) df = BarrettsProgressionRisk:::be_model$pred.confidence
   
+  mm = range(df[c('r1','r2')])
+  
+  cuts = seq(mm[1], mm[2], by=df$r1[2])
+
   plot.theme = theme(text=element_text(size=12), panel.background=element_blank(), strip.background =element_rect(fill="white"),  
                      strip.text = element_text(size=12), 
                      axis.line=element_line(color='black'), panel.grid.major=element_line(color='grey90'),
@@ -93,7 +97,7 @@ showPredictionCalibration<-function(df=NULL) {
   
   ggplot(df, aes(mn, perc)) + 
     geom_rect(aes(xmin=r1, xmax=r2, ymin=0,ymax=1, fill=Risk), alpha=0.6) + 
-    scale_fill_manual(values=risk.colors, limits=levels(pred.confidence$Risk) ) +
+    scale_fill_manual(values=riskColors(), limits=levels(df$Risk) ) +
     geom_vline(xintercept=cuts[2:(length(cuts)-1)], color='grey88') +
     geom_smooth(method='lm',formula=y~x, color='grey39', linetype='dashed', fill='grey88', size=0.5, fullrange=T) + 
     geom_point() + geom_errorbar(aes(ymin=ci.low, ymax=ci.high), size=0.5, width=0.01) +
@@ -103,15 +107,14 @@ showPredictionCalibration<-function(df=NULL) {
     plot.theme + theme(legend.position = 'bottom') + labs(x='mean(Absolute Risk)', y='Progressor:Non-Progressor', title='Risk Calibration') 
 }
 
-#' Get the colors used for risks
+#' Get the colors used for risk classes 'low', 'moderate','high'
 #' @name riskColors
-#' @return vector
+#' @return tibble
 #'
 #' @author skillcoyne
 #' @export
 riskColors<-function() {
-  rc = risk.colors
-  names(rc) = c('Low','Moderate','High')
+  rc = tibble(Low = "#4575B4", Moderate="#FEE090",High="#A50026")
   return(rc)
 }
 
@@ -167,7 +170,8 @@ patientRiskTilesPlot<-function(brr, col='Endoscopy', direction=c('fwd','rev')) {
   preds = preds %>% mutate_if(is.numeric, list(~factor(.,ordered=T)))
   
   p = ggplot(preds, aes_string(col, 'GEJ.Distance')) +
-    geom_tile(aes(fill=Risk), color='white',size=2) + scale_fill_manual(values=riskColors(), limits=names(riskColors())) +
+    geom_tile(aes(fill=Risk), color='white',size=2) + 
+    scale_fill_manual(values=riskColors(), limits=names(riskColors())) +
     labs(y='Esophageal Location (GEJ...)')
   
   if (dir == 'rev') p = p + scale_x_discrete(limits=rev(levels(preds[[col]])))
@@ -198,8 +202,11 @@ patientEndoscopyPlot<-function(brr) {
   preds = preds %>% rowwise() %>% dplyr::mutate( img=printRisk(Probability*100,CI.low*100,CI.high*100,Risk) )
   
   ggplot(preds, aes(Endoscopy, Probability)) + ylim(0,1) +
-    geom_line(color='grey') + geom_errorbar(aes(ymin=CI.low,ymax=CI.high, color=Risk), width=5, show.legend=F) + geom_point(aes(color=Risk), size=5) + 
-    scale_color_manual(values=riskColors(), limits=names(riskColors())) + labs(y='Absolute Risk', x='Endoscopy Date',title='Absolute risks over time') + theme_bw() + theme(legend.position='bottom')
+    geom_line(color='grey') + 
+    geom_errorbar(aes(ymin=CI.low,ymax=CI.high, color=Risk), width=5, show.legend=F) + 
+    geom_point(aes(color=Risk), size=5) + 
+    scale_color_manual(values=riskColors(), limits=names(riskColors())) + 
+    labs(y='Absolute Risk', x='Endoscopy Date',title='Absolute risks over time') + theme_bw() + theme(legend.position='bottom')
 }
 
 
@@ -217,9 +224,8 @@ copyNumberMountainPlot<-function(brr,annotate=T, legend=T,  as=c('plot','list'))
     stop("BarrettsRiskRx required")
   rettype = match.arg(as)
   
-  #mp = .mountainPlots(brr,annotate)
-  mp = mountainPlots(brr$tiles, as.matrix(coef(brr$be.fit$fit, brr$be.fit$lambda)), 
-                      brr$be.fit$cvRR, brr$segmented$chr.build.info, annotate=T) 
+  mp = BarrettsProgressionRisk:::mountainPlots(brr$tiles, as.matrix(coef(brr$be.model$fit, brr$be.model$lambda)), 
+                      brr$be.model$cvRR, brr$segmented$chr.build.info, annotate=T) 
   ht = length(mp$plot.list)*2
   
   if (rettype == 'list') {
@@ -237,26 +243,30 @@ copyNumberMountainPlot<-function(brr,annotate=T, legend=T,  as=c('plot','list'))
   }
 }
 
-
-
 mountainPlots<-function(tiles, coefs, cvRR, build, annotate=T) {
   pal = c('#238B45', 'grey','#6A51A3')
-  chr.info = chrInfo(build=build)
+  chr.info = BarrettsProgressionRisk:::chrInfo(build=build)
   
   samples = rownames(tiles)
-  locs = get.loc(tiles[,-ncol(tiles),drop=F])
+  locs = BarrettsProgressionRisk:::get.loc(tiles[,-ncol(tiles),drop=F])
 
   #coefs =  as.matrix(coef(brr$be.fit$fit, brr$be.fit$lambda))
   if (!is.null(coefs)) {
     coefs = coefs[which(coefs != 0),][-1]
-    coefs = bind_cols(get.loc(t(coefs)), 'coef' = coefs)
-  
-    #cvRR = brr$be.fit$cvRR
+    
+    coefs = tibble::enframe(coefs, name='feature') %>% dplyr::rename(coef = 'value') %>%
+      separate(feature, c('chr','start','end'), sep = ':|-', remove = F) %>% 
+      mutate_at(vars(start, end), as.double) %>%       
+      mutate(chr = factor(chr, levels=levels(locs$chr), ordered=T))
+    
     if (is.data.frame(cvRR) | is.matrix(cvRR)) cvRR = cvRR[,'cvRR']
   
-    cvdf = bind_cols( get.loc(t(cvRR)), 'cvRR' = cvRR)
-  
-    cvdf = full_join(cvdf, coefs, by=c('chr','start','end'))
+    cvdf = cvRR %>% separate(label, c('chr','start','end'), sep=':|-', remove=F) %>%
+      mutate_at(vars(start, end), as.double) %>%       
+      mutate(chr = factor(chr, levels=levels(locs$chr), ordered=T)) %>%
+      arrange(chr,start)
+
+    cvdf = full_join(cvdf, coefs, by=c('label'='feature','chr','start','end', 'coef'))
   }
   
   plist = list()
@@ -291,8 +301,8 @@ mountainPlots<-function(tiles, coefs, cvRR, build, annotate=T) {
     )
 
     arms = arms %>% rowwise() %>% dplyr::mutate( 
-      CN = cn(value,c(-1,1)), 
-      annotate = ifelse(!is.na(coef),cn(value,c(0,0)),'norm')) %>% 
+        CN = cn(value,c(-1,1)), 
+        annotate = ifelse(!is.na(coef),cn(value,c(0,0)),'norm')) %>% 
       filter(!is.na(coef)) %>% mutate(
         CN = factor(CN, levels = c('loss','norm','gain')),
         annotate = factor(annotate, levels = c('loss','norm','gain'))

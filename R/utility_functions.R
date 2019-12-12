@@ -9,9 +9,28 @@ cvRR<-function(df, coefs) {
   })
 }
 
-#TBD
+
 model.pred.confidence<-function(df) {
+  ft.fun<-function(NP,P) {
+    st.tb = df %>% dplyr::select(Patient, Status) %>% distinct %>% group_by(Status) %>% tally %>% spread(Status,n)
+    f = chisq.test(rbind(cbind(NP,P),st.tb))
+    cbind.data.frame('p.value'=round(f$p.value, 4))
+  }
   
+  qt = df %>% group_by(quants, Status) %>% dplyr::summarise(n=length(Status) ) %>% spread(Status, n) %>% ungroup %>%
+    left_join( df %>% dplyr::group_by(quants) %>% dplyr::summarise ('mn'=mean(Probability), 'sd'=sd(Probability) ), by='quants')
+  
+  pred.confidence = qt %>% dplyr::group_by(quants) %>% 
+    dplyr::mutate( 'perc'=P/sum(NP,P), 'p.value'=ft.fun(NP,P)$p.value, 'conf'=ifelse(p.value < 0.05, '*', '') ) %>% 
+    separate(quants, c('r1','r2'), ',', remove = F) %>% 
+    mutate_at(vars('r1','r2'), list(sub), pattern='\\[|\\]|\\(', replacement='') %>% mutate_at(vars(r1,r2), as.double) %>%  
+    dplyr::mutate(Risk = ifelse(round(P.ratio,1)<.5, 'Low','High'))
+  
+  pred.confidence = bind_cols(pred.confidence, 
+                              data.frame(ci.low=qbeta(0.025, shape1=pred.confidence$P+.5, shape2 = pred.confidence$NP+.5),
+                                         ci.high=qbeta(0.975, shape1=pred.confidence$P+.5, shape2 = pred.confidence$NP+.5)))
+  
+  pred.confidence %>% mutate(Risk = case_when( r2 == 0.5 | r1 == 0.3 ~ 'Moderate', TRUE ~ Risk ))
 }
 
 
@@ -29,7 +48,7 @@ getcachedir<-function() {
 }
 
 # Renames 'get.chr.lengths'
-chrInfo<-function(chrs =  c(1:22, 'X','Y'), prefix='chr', build='hg19', file=NULL) {
+chrInfo<-function(chrs=c(1:22, 'X','Y'), prefix='chr', build='hg19', file=NULL) {
   local_file =  paste(build,'_info.txt',sep='')
   
   local_file = system.file("extdata", local_file, package="BarrettsProgressionRisk")
@@ -212,9 +231,7 @@ non.zero.coef<-function(model=fitV, s=lambda) {
     colnames(dtR)[grep('loc|chr|start|end',colnames(dtR),invert=T)] = name
     dtF = data.table::fread(pairlist[i,'fitted'])    
     colnames(dtF)[grep('loc|chr|start|end',colnames(dtF),invert=T)] = name
-    
-    
-    
+
     if (is.null(merged.raw)) {
       merged.raw = dtR
       merged.fitted = dtF
@@ -225,7 +242,52 @@ non.zero.coef<-function(model=fitV, s=lambda) {
     
     if (verbose)
       message(paste( ncol(merged.raw)-4, ' samples merged. ', nrow(merged.raw), ' rows.', sep='' ))
-    
   }
+}
+
+
+
+generate.internal.be.model<-function(model.dir) {
+  select.alpha = '0.9'
+  load(paste0(model.dir,'/loo_0.9.Rdata'),verbose=F)
+  rm(plots,performance.at.1se, fits, coefs)
+  load(paste0(model.dir, '/model_data.Rdata'), verbose=F)
+  load(paste0(model.dir, '/all.pt.alpha.Rdata'), verbose=F)
+  load(paste0(model.dir, '/all.pt.alpha.Rdata'), verbose=F)
+
+  orig.labels = tibble::enframe(labels) %>% mutate(SampleId = row_number())
+  
+  dysplasia.df = dysplasia.df[orig.labels$name,]
+  rownames(dysplasia.df) = orig.labels$SampleId
+  
+  fitV = models[[select.alpha]]
+  lambda = performance.at.1se[[select.alpha]]$lambda
+  coefs = coefs[[select.alpha]]
+  
+  coef_cv_RR = tibble::enframe(non.zero.coef(fitV, lambda)[-1], name='label') %>% 
+    dplyr::rename(coef = 'value') %>%
+    mutate(cvRR = cvRR(dysplasia.df, coefs)[label]) %>% arrange(desc(cvRR))
+
+  cuts = seq(0,1,0.1)  
+  
+  nzcoefs = nzcoefs[unique(pg.samp$Hospital.Research.ID)]
+  names(nzcoefs) = unique(pg.samp$Patient)
+  nzcoefs = purrr::map(nzcoefs, function(x) as_tibble(x, rownames = 'coef'))
+
+  cxPredictions = pg.samp %>% dplyr::select(Patient, Status, Endoscopy.Year, Pathology, Sex, Block, Samplename, Initial.Endoscopy, Final.Endoscopy, Age.at.diagnosis, Prediction, RR) %>% 
+    left_join(orig.labels, by=c('Samplename' = 'name') ) %>% dplyr::select(-Samplename, -value) %>% 
+    dplyr::rename(Samplename = 'SampleId', Probability = 'Prediction', `Relative Risk` = 'RR') %>% 
+    dplyr::select(Patient, Samplename, Status, everything()) %>% 
+    mutate(quants = cut(Probability, breaks=cuts, include.lowest = T))
+  
+  
+  pred.conf = model.pred.confidence(cxPredictions)  
+  
+  
+  be_model = BarrettsProgressionRisk:::be.model.fit(fitV, lambda, 5e6, z.mean, z.arms.mean, z.sd, z.arms.sd, mn.cx, sd.cx, nzcoefs, coef_cv_RR, pred.conf)  
+  return(be_model)
   
 }
+ 
+
+

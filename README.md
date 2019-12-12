@@ -41,20 +41,26 @@ rx(pr)
 
 A script is included in inst/bin/generate_report.R. To write your own three parameters are needed:
 
-1. The output directory where the raw and fitted files were output from QDNAseq
-2. A clinical file containing per-sample p53 IHC and pathology information (see example 'demo_file.txt'). This is optional.
+1. The output directory where the raw and fitted files were output from QDNAseq. These must have been generated with a bin size of 50kb (default if the provided function is used).
+2. A file containing per-sample p53 IHC and pathology information (see example 'endoscopy.xml'). This is optional.
 3. The output directory for the html report.
 
 ```
 library(rmarkdown)
 library(knitr)
 
+# bamPath needs to contain one or more bam files for a patient, the default binsize is 50. 
+# This should not be changed without extensive testing of the data unless you are retraining the underlying model!  
+BarrettsProgressionRisk::runQDNAseq(bamPath='.', outputPath=<path to qdnaseq output>,  binsize=50)
+
+
 qdnaseq.path=<path to qdnaseq output>
 info.file=<path to per sample p53 IHC/pathology file>
+output.dir='~/tmp'
 
 options(warn = -1)
 rmd = system.file('rmd','RiskReport.Rmd',package="BarrettsProgressionRisk")
-rmarkdown::render(rmd, params=list(path=path.expand(qdnaseq.path), info.file=clin.file), 
+rmarkdown::render(rmd, params=list(path=path.expand(qdnaseq.path), info.file=info.file), 
                   output_dir=path.expand(output.dir), output_format='html_document',
                   intermediates_dir=path.expand(output.dir))
 

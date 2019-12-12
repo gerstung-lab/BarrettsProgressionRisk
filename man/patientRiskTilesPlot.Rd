@@ -4,10 +4,15 @@
 \alias{patientRiskTilesPlot}
 \title{Per sample over time tile risk plot}
 \usage{
-patientRiskTilesPlot(brr)
+patientRiskTilesPlot(brr, col = "Endoscopy", direction = c("fwd",
+  "rev"))
 }
 \arguments{
-\item{brr}{BarrettsRiskRx object or tibble with Risk and Endoscopy columns}
+\item{brr}{BarrettsRiskRx object or tibble with Risk column}
+
+\item{col}{time column name, default 'Endoscopy'}
+
+\item{direction}{to plot the time, fwd or rev  (forward or reverse)}
 }
 \value{
 ggplot object

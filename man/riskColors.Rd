@@ -2,15 +2,15 @@
 % Please edit documentation in R/plot_utilities.R
 \name{riskColors}
 \alias{riskColors}
-\title{Get the colors used for risks}
+\title{Get the colors used for risk classes 'low', 'moderate','high'}
 \usage{
 riskColors()
 }
 \value{
-vector
+tibble
 }
 \description{
-Get the colors used for risks
+Get the colors used for risk classes 'low', 'moderate','high'
 }
 \author{
 skillcoyne

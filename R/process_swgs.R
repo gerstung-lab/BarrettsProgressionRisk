@@ -5,7 +5,7 @@
 #' 
 #' @author skillcoyne
 #' @export
-runQDNAseq<-function(bam=NULL,path=NULL,outputPath=NULL, minMapQ=37, binsize=15) {
+runQDNAseq<-function(bam=NULL,path=NULL,outputPath=NULL, minMapQ=37, binsize=50) {
   require(Biobase) 
   require(QDNAseq) 
   require(tidyverse) 
@@ -15,9 +15,13 @@ runQDNAseq<-function(bam=NULL,path=NULL,outputPath=NULL, minMapQ=37, binsize=15)
   } else if (is.null(bam) && length(list.files(path, 'bam')) <= 0) {
     error = paste(error, "No bam files found in current directory. Exiting.", sep='\n')
   }
+
   if (!is.null(error)) 
     stop(error)
-      
+
+  if (binsize != 50) 
+    warning("Internal model was generated using data processed with a 50kb bin size for QDNAseq. Using a different bin size is not recommended.")
+  
   if (!dir.exists(outputPath))
     dir.create(outputPath, recursive = T)
   

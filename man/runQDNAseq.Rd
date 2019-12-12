@@ -5,7 +5,7 @@
 \title{Run QNDAseq on bam files using previously determined parameters and output the required raw/filtered data files}
 \usage{
 runQDNAseq(bam = NULL, path = NULL, outputPath = NULL,
-  minMapQ = 37)
+  minMapQ = 37, binsize = 50)
 }
 \arguments{
 \item{outputPath}{Location to output resulting raw and fitted read files and plots}

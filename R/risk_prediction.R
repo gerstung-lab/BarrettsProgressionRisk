@@ -51,9 +51,7 @@ tileSamples<-function(obj, be.model=NULL, scale=T, MARGIN=2, verbose=T) {
   if (verbose) message(paste0('Scale tiled data: ',scale))
   
   if (is.null(be.model)) {
-    be.model = be.model.fit(model=fitV, s=lambda, tile.size=5e6, 
-                            tile.mean=z.mean, arms.mean=z.arms.mean, tile.sd=z.sd, arms.sd=z.arms.sd, 
-                            cx.mean=mn.cx, cx.sd=sd.cx, per.pt.nzcoefs = nzcoefs, cvRR = coef_cv_RR, pconf = pred.confidence)
+    be.model = BarrettsProgressionRisk:::be_model
   } else {
     if (length(be.model$arms.mean) != length(be.model$arms.sd)) stop('Arm means/sd do not match in length') 
     if (length(be.model$tile.mean) != length(be.model$tile.sd)) stop('Tile means/sd do not match in length') 
@@ -134,7 +132,7 @@ predictRisk<-function(obj, merged.tiles, be.model = NULL, verbose=T) {
   per.endo.preds = .setUpRxTablePerEndo(per.sample.preds, 'max', verbose) %>% rowwise() %>% mutate( Risk=.risk(Probability,be.model$pred.confidence))
   perEndoError = .setUpRxTablePerEndo(perSampleError, 'max', F) %>% dplyr::select('Endoscopy','Error')
   
-  psp = list('per.endo'=per.endo.preds, 'per.sample'=per.sample.preds, 'segmented'=obj, 'per.sample.error'=perSampleError, 'per.endo.error'=perEndoError, 'tiles'=merged.tiles$tiles, 'be.fit' = be.model)
+  psp = list('per.endo'=per.endo.preds, 'per.sample'=per.sample.preds, 'segmented'=obj, 'per.sample.error'=perSampleError, 'per.endo.error'=perEndoError, 'tiles'=merged.tiles$tiles, 'be.model' = be.model)
   
   class(psp) <- c('BarrettsRiskRx', class(psp))
   return(psp)
@@ -158,9 +156,10 @@ predictRiskFromSegments<-function(obj, be.model = NULL, verbose=T) {
     }
 
   if (is.null(be.model)) {
-    be.model = be.model.fit(model=fitV, s=lambda, tile.size=5e6, 
-      tile.mean=z.mean, arms.mean=z.arms.mean, tile.sd=z.sd, arms.sd=z.arms.sd, 
-      cx.mean=mn.cx, cx.sd=sd.cx, per.pt.nzcoefs = nzcoefs, cvRR = coef_cv_RR, pconf = pred.confidence)
+    be.model = BarrettsProgressionRisk:::be_model
+    # be.model = be.model.fit(model=fitV, s=lambda, tile.size=5e6, 
+    #   tile.mean=z.mean, arms.mean=z.arms.mean, tile.sd=z.sd, arms.sd=z.arms.sd, 
+    #   cx.mean=mn.cx, cx.sd=sd.cx, per.pt.nzcoefs = nzcoefs, cvRR = coef_cv_RR, pconf = pred.confidence)
     message('Using internal glmnet model.')
   } else {
     warning("Using EXTERNAL glmnet model. Validation not provided.")
@@ -202,9 +201,9 @@ absoluteRiskCI<-function(psp, by=c('endoscopy','sample'), verbose=T) {
   
   preds = add_column(preds, 
               'CI.low'=low,
-             'Risk.low'=sapply(low, .risk, be.model$pred.confidence),
+             'Risk.low'=sapply(low, .risk, psp$be.model$pred.confidence),
              'CI.high'=high,
-             'Risk.high'=sapply(high, .risk, be.model$pred.confidence))
+             'Risk.high'=sapply(high, .risk, psp$be.model$pred.confidence))
   
   return(preds)
 }
@@ -368,22 +367,24 @@ rx<-function(brr, by=c('endoscopy','sample')) {
                  'Endoscopy'=brr$per.endo,
                  'Sample'=brr$per.sample)
 
-  rules = .apply.rules(preds,riskBy)
+  rules = .apply.rules(preds,riskBy, brr$be.model$pred.confidence)
 
   return(rules)
 }
 
 .apply.rules<-function(preds,riskBy,pred.confidence) {
-  preds = preds %>% rowwise() %>% dplyr::mutate(Risk = .risk(Probability, pred.confidence))
-  preds$Risk = factor(preds$Risk, levels=c('Low','Moderate','High'), ordered=T)
+  preds = preds %>% rowwise() %>% dplyr::mutate(Risk = .risk(Probability, pred.confidence)) %>%
+    mutate(Risk = factor(Risk, levels=c('Low','Moderate','High'), ordered=T))
   
+  ## TODO p53 could be 0,1 or normal,aberrant  
   p53Col = grep('p53', colnames(preds), value=T, ignore.case=T)
   pathCol = grep('pathology', colnames(preds), value=T, ignore.case=T)
   
   # Consecutive after sorting by the selected column
   preds = preds %>% arrange(preds[[riskBy]])
   
-  rules = as_tibble(matrix(ncol=3, nrow=0, dimnames=list(c(), c('Time 1','Time 2','Rule'))))
+  
+  rules = tibble(`Time 1` = as.Date(x = integer(0), origin = "1970-01-01"), `Time 2` = as.Date(x = integer(0), origin = "1970-01-01"), Rule = integer())
   for (i in 1:nrow(preds)) {
     risks = table(preds$Risk[i:(i+1)])
     p53 = NULL
@@ -403,10 +404,10 @@ rx<-function(brr, by=c('endoscopy','sample')) {
       rule = 4
     }
     
-    rules = add_row(rules, 'Time 1'=preds[[riskBy]][i], 'Time 2'=preds[[riskBy]][(i+1)], 'Rule'=rule  )
+    rules = add_row(rules, 'Time 1' = as.Date(preds[[riskBy]][i]), 'Time 2' = as.Date(preds[[riskBy]][(i+1)]), 'Rule' = rule  )
     if (i == nrow(preds)) break;
   }
-  rules$Rx = sapply(rules$Rule, .rule.rx)
+  rules = rules %>% mutate(Rx = map_chr(Rule, .rule.rx))
   
   return(rules)
 }

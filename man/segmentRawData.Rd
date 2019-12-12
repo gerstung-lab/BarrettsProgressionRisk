@@ -5,10 +5,12 @@
 \title{This function runs the copynumber::pcf algorithm to segment the sWGS data.
 renamed from 'binSWGS'}
 \usage{
-segmentRawData(info, raw.data, fit.data, blacklist = NULL,
-  min.probes = 67, gamma2 = 250, norm = T, cutoff = 0.015,
-  logTransform = F, cache.dir = getcachedir(), build = "hg19",
-  verbose = T)
+segmentRawData(info, raw.data, fit.data,
+  blacklist = readr::read_tsv(system.file("extdata",
+  "qDNAseq_blacklistedRegions.txt", package = "BarrettsProgressionRisk"),
+  col_names = T, col_types = "cii"), gamma2 = 250, kb = 50,
+  cutoff = 0.008, multipcf = T, logTransform = F,
+  cache.dir = getcachedir(), build = "hg19", verbose = T)
 }
 \arguments{
 \item{raw.data}{Data frame of raw read counts (file name is also valid)}
@@ -17,15 +19,15 @@ segmentRawData(info, raw.data, fit.data, blacklist = NULL,
 
 \item{blacklist}{qDNAseq_blacklistedRegions (defaults to file provided in package)}
 
-\item{min.probes}{minimum number of probes per segment DEF=67  (~1Mb)}
-
 \item{gamma2}{gamma adjustment for pcf DEF=250}
 
-\item{norm}{normalize pcf, DEF=T}
+\item{kb}{QDNAseq bin size}
 
 \item{cutoff}{is the residual value cutoff for QC DEF=0.015}
 
 \item{logTransform}{DEF=F}
+
+\item{norm}{normalize pcf, DEF=T}
 }
 \value{
 list of objects:

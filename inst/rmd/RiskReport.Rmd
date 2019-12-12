@@ -1,6 +1,6 @@
 ---
 title: "Barrett's Progression Risk Report"
-author: ""
+author: "`r Sys.info()[['effective_user']]`"
 date: "`r format(Sys.time(), '%d %B %Y')`"
 output: 
   html_document: 
@@ -31,8 +31,8 @@ corrFile = grep('corr|fitted', list.files(inputPath, pattern='txt', full.names=T
 
 sample.info = loadSampleInformation(clinInfoFile)
 
-swgsObj = segmentRawData(info=sample.info, raw.data=rawFile, fit.data=corrFile)
-pr = predictRiskFromSegments(swgsObj)
+swgsObj = segmentRawData(info=sample.info, raw.data=rawFile, fit.data=corrFile, verbose=F)
+pr = predictRiskFromSegments(swgsObj,verbose=F)
 
 samples = c( sampleNames(pr,T), sampleNames(pr,F) )
 blacklist = read.table(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), sep = '\t', header=T)
@@ -60,7 +60,8 @@ riskCols = RColorBrewer::brewer.pal(11, "RdYlBu")[seq(1,11, 3)]
 recommendations %>%
   select(`Time 1`, `Time 2`, Rx) %>%
   kable(format = "html", escape = F) %>%
-  row_spec(nrow(recommendations), bold=T, color=ifelse(recommendations[nrow(recommendations),'Rule'] %in% c(1,4), 'white', 'black'), background = riskCols[recommendations[nrow(recommendations),'Rule',drop=T]]) %>%
+  row_spec(nrow(recommendations), bold=T, color=ifelse(recommendations[nrow(recommendations),'Rule'] %in% c(1,4), 'white', 'black'), 
+           background = riskCols[recommendations[nrow(recommendations),'Rule',drop=T]]) %>%
   kable_styling("bordered", full_width = F, position = 'left') 
 ```
 
@@ -79,7 +80,9 @@ printRisk <- function(x,low,high, risk='Unknown') {
 preds = absoluteRiskCI(pr)
 preds = preds %>% rowwise() %>% dplyr::mutate( img=printRisk(Probability*100,CI.low*100,CI.high*100,Risk) )
 
-kable(preds[,c('Endoscopy','Risk','img')],col.names=c('Endoscopy','Risk','Absolute Risk'), escape=FALSE) %>% kable_styling(bootstrap_options=c('bordered',full_width=T))
+dplyr::select(preds, 'Endoscopy','Risk','img') %>% 
+  kable(col.names=c('Endoscopy','Risk','Absolute Risk'), escape=FALSE) %>% 
+  kable_styling(bootstrap_options=c('bordered',full_width=T))
 
 patientEndoscopyPlot(pr)
 ```
@@ -100,7 +103,9 @@ printRisk <- function(x,low,high, risk='Unknown') {
 preds = absoluteRiskCI(pr,'sample')
 preds = preds %>% rowwise() %>% dplyr::mutate( img=printRisk(Probability*100,CI.low*100,CI.high*100,Risk) )
 
-table = kable(preds[,c('Sample','Risk','img')],col.names=c('','Risk','Absolute Risk'), escape=FALSE) %>% kable_styling(bootstrap_options=c('bordered',full_width=T)) 
+table = dplyr::select(preds, 'Sample','Risk','img') %>% 
+  kable(col.names=c('','Risk','Absolute Risk'), escape=FALSE) %>% 
+  kable_styling(bootstrap_options=c('bordered',full_width=T)) 
 for (endo in levels(preds$Endoscopy)) {
   rows = which(preds$Endoscopy == endo)
   table = table %>% group_rows(endo, rows[1], rows[length(rows)])  
@@ -113,7 +118,8 @@ table
 p = patientRiskTilesPlot(pr)
 
 legend = BarrettsProgressionRisk:::.get.legend(p)
-p = p + theme(legend.position = 'none', axis.text.x = element_text(angle=45)) + labs(title='Sample risk by endoscopy', y='Biopsy height', x='Date')
+p = p + theme(legend.position = 'none', axis.text.x = element_text(angle=45, hjust=1)) + 
+  labs(title='Sample risk by endoscopy', y='Biopsy location', x='Sample Date')
 
 gridExtra::grid.arrange(p)
 ```
@@ -135,8 +141,8 @@ showPredictionCalibration()
 Surveillance/treatment recommendations are then assessed per pair of samples, presuming these samples come from different timepoint/endoscopies in the same patient. The following rules are applied using copy number risks, p53 IHC, and pathology where available. 
 
 ```{r rules_list}
-BarrettsProgressionRisk::rxRules %>% #mutate( Rx = cell_spec(Rx, "html", color = ifelse(Rule %in% c(1,4), 'white', 'black'), background = riskCols[Rule], bold = (Rule == 1), italic = (Rule < 3) ) )  %>% 
-  select(Rx, Description) %>%
+filter(BarrettsProgressionRisk::rxRules, Rule != 'None') %>% #mutate( Rx = cell_spec(Rx, "html", color = ifelse(Rule %in% c(1,4), 'white', 'black'), background = riskCols[Rule], bold = (Rule == 1), italic = (Rule < 3) ) )  %>% 
+  #select(Rx, Description) %>%
   kable(escape=F, caption='Rules for recommending treatment') %>% 
     kable_styling("basic", full_width = F) 
 ```
@@ -183,7 +189,7 @@ For processing and predictions these samples are presumed to be from a single pa
 sampleResiduals(pr) %>%
   mutate(
     Pass = cell_spec(Pass, "html", color=ifelse(Pass, 'green', 'red'), background=ifelse(Pass, 'green', 'red'))) %>%
-  select(sample, varMAD_median, Pass) %>%
+  select(matches('sample'), varMAD_median, Pass) %>%
   kable(format = "html", escape = F, col.names=c('Sample','med(var(MAD(segments)))', 'QC Pass/Fail')) %>%
   kable_styling("bordered", full_width = F, position = 'left') 
 ```
