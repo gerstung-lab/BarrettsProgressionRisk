@@ -162,14 +162,16 @@ patientRiskTilesPlot<-function(brr, col='Endoscopy', direction=c('fwd','rev')) {
     if (length(which(colnames(preds) %in% c(col, 'Risk'))) < 2) stop("BarrettsRiskRx object required, or tibble with numeric/date and Risk (Low,Moderate,High) columns")
   }
 
-  if ('GEJ.Distance' %in% colnames(preds) & !is.factor(preds$GEJ.Distance)) {
-    preds$GEJ.Distance = fct_rev(factor(preds$GEJ.Distance, ordered=T))
-  } else if (!'GEJ.Distance' %in% colnames(preds)) {
-    preds$GEJ.Distance = 1
+  gej.dist = grep('Distance',colnames(preds),value=T)
+  
+  if (length(gej.dist) > 0 & !is.factor(preds[[gej.dist]])) {
+    preds[[gej.dist]] = fct_rev(factor(preds[[gej.dist]], ordered=T))
+  } else if (length(gej.dist <= 0)) {
+    preds[[gej.dist]] = 1
   }
   preds = preds %>% mutate_if(is.numeric, list(~factor(.,ordered=T)))
   
-  p = ggplot(preds, aes_string(col, 'GEJ.Distance')) +
+  p = ggplot(preds, aes_(as.name(col), as.name(gej.dist))) +
     geom_tile(aes(fill=Risk), color='white',size=2) + 
     scale_fill_manual(values=riskColors(), limits=names(riskColors())) +
     labs(y='Esophageal Location (GEJ...)')
@@ -200,13 +202,15 @@ patientEndoscopyPlot<-function(brr) {
   
   preds = absoluteRiskCI(brr)
   preds = preds %>% rowwise() %>% dplyr::mutate( img=printRisk(Probability*100,CI.low*100,CI.high*100,Risk) )
-  
+
   ggplot(preds, aes(Endoscopy, Probability)) + ylim(0,1) +
     geom_line(color='grey') + 
     geom_errorbar(aes(ymin=CI.low,ymax=CI.high, color=Risk), width=5, show.legend=F) + 
     geom_point(aes(color=Risk), size=5) + 
     scale_color_manual(values=riskColors(), limits=names(riskColors())) + 
-    labs(y='Absolute Risk', x='Endoscopy Date',title='Absolute risks over time') + theme_bw() + theme(legend.position='bottom')
+    scale_x_date(date_breaks = "2 month", date_labels = "%b %Y") +
+    labs(y='Absolute Risk', x='Endoscopy Date',title='Absolute risks over time') + 
+    theme_bw() + theme(legend.position='bottom', axis.text.x = element_text(angle=45, hjust=1))
 }
 
 
@@ -316,7 +320,7 @@ mountainPlots<-function(tiles, coefs, cvRR, build, annotate=T) {
     } else {
       p = p + geom_rect(aes(xmin=start,xmax=end,ymin=0,ymax=value, fill=annotate)) + 
         geom_rect(data=arms,aes(xmin=start,xmax=end,ymin=0,ymax=value,fill=annotate),alpha=0.5) +
-        geom_rect(aes(xmin=1,xmax=chr.length,ymin=-1,ymax=1),fill='grey88',alpha=0.03) +
+        #geom_rect(aes(xmin=1,xmax=chr.length,ymin=-1,ymax=1),fill='grey88',alpha=0.03) +
         scale_fill_manual(values=pal, limits=c('loss','norm','gain'), labels=c('Loss','Normal','Gain'), name='Model Features')
     }
     p = p + labs(x='Chromosomes', y='Relative CNA',title=sample) +

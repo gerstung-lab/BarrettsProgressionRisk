@@ -69,7 +69,7 @@ recommendations %>%
 
 ### Risk Per Endoscopy
 
-```{r risk_endo, fig.height=4, fig.width=length(unique(pr$segmented$sample.info$Endoscopy))*2}
+```{r risk_endo, fig.height=6, fig.width=length(unique(pr$segmented$sample.info$Endoscopy))*2}
 printRisk <- function(x,low,high, risk='Unknown') {
   img = switch(risk, 
          'High'='img/Human_body_silhouette-RED.png',
@@ -116,7 +116,7 @@ table
 ```
 
 
-```{r risk_sample_plot, fig.height=2+length(unique(pr$segmented$sample.info$GEJ.Distance)*2), fig.width=2+length(unique(pr$segmented$sample.info$Endoscopy))*2}
+```{r risk_sample_plot, fig.height=(2+nrow(dplyr::select(pr$segmented$sample.info, matches('Distance')) %>% distinct)*2), fig.width=(2+length(unique(pr$segmented$sample.info$Endoscopy))*2)}
 p = patientRiskTilesPlot(pr)
 
 legend = BarrettsProgressionRisk:::.get.legend(p)
@@ -201,8 +201,9 @@ sampleResiduals(pr) %>%
 
 These plots show the adjusted and scaled relative copy number fitted values (y-axis) plotted across the genome (chromosomes 1-22) for each sample. The bars in purple or green are regions that the model uses to predict the risk of progression. Wider bars show chromosome arms and the height for all bars reflects the relative CNA for that bin or arm.  
 
-```{r plot_cn, warning=F, echo=F, fig.width=12, fig.height=4+length(pr$segmented$seg.plots)*4}
-copyNumberMountainPlot(pr, T, F)
+```{r plot_cn, warning=F, echo=F, fig.width=12, fig.height=(4+length(pr$segmented$sample.info$Sample)*4)}
+plist = copyNumberMountainPlot(pr, F, F, 'list')
+do.call(grid.arrange, c(plist, ncol=1))
 ```
 
 

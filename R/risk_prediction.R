@@ -107,10 +107,7 @@ tileSamples<-function(obj, be.model=NULL, scale=T, MARGIN=2, verbose=T) {
 
 predictRisk<-function(obj, merged.tiles, be.model = NULL, verbose=T) {
   if (is.null(be.model)) {
-    be.model = be.model.fit(model=fitV, s=lambda, tile.size=5e6, 
-                            tile.mean=z.mean, arms.mean=z.arms.mean, tile.sd=z.sd, arms.sd=z.arms.sd, 
-                            cx.mean=mn.cx, cx.sd=sd.cx, per.pt.nzcoefs = nzcoefs, cvRR = coef_cv_RR, pconf = pred.confidence)
-    #message('Using internal glmnet model.')
+    be.model = BarrettsProgressionRisk:::be_model
   } 
 
   sparsed_test_data = Matrix(data=0, nrow=nrow(merged.tiles$tiles),  ncol=ncol(merged.tiles$tiles),
@@ -157,9 +154,6 @@ predictRiskFromSegments<-function(obj, be.model = NULL, verbose=T) {
 
   if (is.null(be.model)) {
     be.model = BarrettsProgressionRisk:::be_model
-    # be.model = be.model.fit(model=fitV, s=lambda, tile.size=5e6, 
-    #   tile.mean=z.mean, arms.mean=z.arms.mean, tile.sd=z.sd, arms.sd=z.arms.sd, 
-    #   cx.mean=mn.cx, cx.sd=sd.cx, per.pt.nzcoefs = nzcoefs, cvRR = coef_cv_RR, pconf = pred.confidence)
     message('Using internal glmnet model.')
   } else {
     warning("Using EXTERNAL glmnet model. Validation not provided.")
