@@ -366,7 +366,9 @@ rx<-function(brr, by=c('endoscopy','sample')) {
   return(rules)
 }
 
-.apply.rules<-function(preds,riskBy,pred.confidence) {
+.apply.rules<-function(preds,riskBy,pred.confidence,time=c('date','numeric')) {
+  time = match.arg(time)
+  
   preds = preds %>% rowwise() %>% dplyr::mutate(Risk = .risk(Probability, pred.confidence)) %>%
     mutate(Risk = factor(Risk, levels=c('Low','Moderate','High'), ordered=T))
   
@@ -377,8 +379,12 @@ rx<-function(brr, by=c('endoscopy','sample')) {
   # Consecutive after sorting by the selected column
   preds = preds %>% arrange(preds[[riskBy]])
   
-  
-  rules = tibble(`Time 1` = as.Date(x = integer(0), origin = "1970-01-01"), `Time 2` = as.Date(x = integer(0), origin = "1970-01-01"), Rule = integer())
+  rules = tibble(`Time 1` = as.Date(x = integer(0), origin = "1970-01-01"), 
+                 `Time 2` = as.Date(x = integer(0), origin = "1970-01-01"), 
+                 Rule = integer())
+  if (time == 'numeric') 
+    rules = tibble(`Time 1` = double(), `Time 2` = double(), Rule = integer())
+
   for (i in 1:nrow(preds)) {
     risks = table(preds$Risk[i:(i+1)])
     p53 = NULL
@@ -398,7 +404,12 @@ rx<-function(brr, by=c('endoscopy','sample')) {
       rule = 4
     }
     
-    rules = add_row(rules, 'Time 1' = as.Date(preds[[riskBy]][i]), 'Time 2' = as.Date(preds[[riskBy]][(i+1)]), 'Rule' = rule  )
+    t1 = preds[[riskBy]][i]; t2 = preds[[riskBy]][(i+1)]
+    if (time == 'date') {
+      t1 = as.Date(t1); t2 = as.Date(t2)
+    }
+
+    rules = add_row(rules, 'Time 1' = t1, 'Time 2' = t2, 'Rule' = rule  )
     if (i == nrow(preds)) break;
   }
   rules = rules %>% mutate(Rx = map_chr(Rule, .rule.rx))
