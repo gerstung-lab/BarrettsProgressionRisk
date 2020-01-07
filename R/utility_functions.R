@@ -246,7 +246,7 @@ non.zero.coef<-function(model=fitV, s=lambda) {
 }
 
 
-
+#' @export
 generate.internal.be.model<-function(model.dir, saveObj=F) {
   select.alpha = '0.9'
   if (length(grep('loo_0.9|model_data|all.pt.alpha', list.files(model.dir))) < 3) stop(paste0("Missing required files in ", model.dir))
