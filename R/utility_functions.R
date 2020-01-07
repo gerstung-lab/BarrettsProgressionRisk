@@ -24,7 +24,7 @@ model.pred.confidence<-function(df) {
     dplyr::mutate( 'perc'=P/sum(NP,P), 'p.value'=ft.fun(NP,P)$p.value, 'conf'=ifelse(p.value < 0.05, '*', '') ) %>% 
     separate(quants, c('r1','r2'), ',', remove = F) %>% 
     mutate_at(vars('r1','r2'), list(sub), pattern='\\[|\\]|\\(', replacement='') %>% mutate_at(vars(r1,r2), as.double) %>%  
-    dplyr::mutate(Risk = ifelse(round(P.ratio,1)<.5, 'Low','High'))
+    dplyr::mutate(Risk = ifelse(round(perc,1)<.5, 'Low','High'))
   
   pred.confidence = bind_cols(pred.confidence, 
                               data.frame(ci.low=qbeta(0.025, shape1=pred.confidence$P+.5, shape2 = pred.confidence$NP+.5),
@@ -247,8 +247,10 @@ non.zero.coef<-function(model=fitV, s=lambda) {
 
 
 
-generate.internal.be.model<-function(model.dir) {
+generate.internal.be.model<-function(model.dir, saveObj=F) {
   select.alpha = '0.9'
+  if (length(grep('loo_0.9|model_data|all.pt.alpha', list.files(model.dir))) < 3) stop(paste0("Missing required files in ", model.dir))
+  
   load(paste0(model.dir,'/loo_0.9.Rdata'),verbose=F)
   rm(plots,performance.at.1se, fits, coefs)
   load(paste0(model.dir, '/model_data.Rdata'), verbose=F)
@@ -264,29 +266,35 @@ generate.internal.be.model<-function(model.dir) {
   lambda = performance.at.1se[[select.alpha]]$lambda
   coefs = coefs[[select.alpha]]
   
-  coef_cv_RR = tibble::enframe(non.zero.coef(fitV, lambda)[-1], name='label') %>% 
+  coef_cv_RR = tibble::enframe( BarrettsProgressionRisk:::non.zero.coef(fitV, lambda)[-1], name='label') %>% 
     dplyr::rename(coef = 'value') %>%
-    mutate(cvRR = cvRR(dysplasia.df, coefs)[label]) %>% arrange(desc(cvRR))
+    mutate(cvRR = BarrettsProgressionRisk:::cvRR(dysplasia.df, coefs)[label]) %>% arrange(desc(cvRR))
 
   cuts = seq(0,1,0.1)  
   
-  nzcoefs = nzcoefs[unique(pg.samp$Hospital.Research.ID)]
-  names(nzcoefs) = unique(pg.samp$Patient)
+  ids = pg.samp %>% dplyr::select(Hospital.Research.ID, Patient) %>% distinct %>% 
+    dplyr::filter(Hospital.Research.ID %in% names(nzcoefs))
+
+  nzcoefs = nzcoefs[ids$Hospital.Research.ID]
+  names(nzcoefs) = as.character(ids$Patient)
   nzcoefs = purrr::map(nzcoefs, function(x) as_tibble(x, rownames = 'coef'))
 
-  cxPredictions = pg.samp %>% dplyr::select(Patient, Status, Endoscopy.Year, Pathology, Sex, Block, Samplename, Initial.Endoscopy, Final.Endoscopy, Age.at.diagnosis, Prediction, RR) %>% 
+  cxPredictions = pg.samp %>% 
+    dplyr::select(Patient, Status, matches('Endoscopy'), Pathology, matches('Age|Sex|Gender'), Block, Samplename,  matches('Prediction|Probability'), RR) %>% 
     left_join(orig.labels, by=c('Samplename' = 'name') ) %>% dplyr::select(-Samplename, -value) %>% 
-    dplyr::rename(Samplename = 'SampleId', Probability = 'Prediction', `Relative Risk` = 'RR') %>% 
+    dplyr::rename_at(vars(matches('Prediction')), list(~sub('Probability',.))) %>%
+    dplyr::rename(Samplename = 'SampleId', `Relative Risk` = 'RR') %>% 
     dplyr::select(Patient, Samplename, Status, everything()) %>% 
     mutate(quants = cut(Probability, breaks=cuts, include.lowest = T))
   
-  
-  pred.conf = model.pred.confidence(cxPredictions)  
+  pred.conf = BarrettsProgressionRisk:::model.pred.confidence(cxPredictions)  
   
   
   be_model = BarrettsProgressionRisk:::be.model.fit(fitV, lambda, 5e6, z.mean, z.arms.mean, z.sd, z.arms.sd, mn.cx, sd.cx, nzcoefs, coef_cv_RR, pred.conf)  
-  return(be_model)
   
+  if (saveObj) saveRDS(be_model, file='R/sysdata.rda', version=2)
+  
+  return(be_model)
 }
  
 
