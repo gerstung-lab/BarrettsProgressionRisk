@@ -1,15 +1,13 @@
 require(tidyverse)
 
-
-
-be.model.fit<-function(model, s, tile.size, 
+be.model.fit<-function(model, s, kb, tile.size, 
                        tile.mean, arms.mean, tile.sd, arms.sd, 
                        cx.mean, cx.sd, per.pt.nzcoefs, cvRR, pconf = NULL) {
 
   if (is.null(pconf)) pconf = pred.confidence
   
   be.model <- list(
-    fit = model, lambda = s, tile.size = tile.size,
+    fit = model, lambda = s, qdnaseq_kb = kb, tile.size = tile.size,
     tile.mean = tile.mean, arms.mean = arms.mean, tile.sd = tile.sd,
     arms.sd = arms.sd, cx.mean = cx.mean,  cx.sd = cx.sd, 
     nzcoefs = per.pt.nzcoefs, cvRR = cvRR,
@@ -87,23 +85,29 @@ tileSamples<-function(obj, be.model=NULL, scale=T, MARGIN=2, verbose=T) {
   mergedDf = subtractArms(segtiles$tiles, armtiles$tiles)
   mergedDf = cbind(mergedDf, 'cx'=cx.score)
   
+  pse = per.sample.error(mergedDf, segtiles$error, armtiles$error)
+  
+  return(list('tiles'=mergedDf, 'residuals'=pse$Xerr, 'per.sample.error'=pse$error))  
+}
+
+per.sample.error<-function(df, seg.tile.error, arm.tile.error) {
   # get the bootstrap errors for coefficients  
   coef.error = .bootstrap.coef.stderr(be.model)
   
   # Errors are the per window, weighted mean error of all segments in the bin
-  Xerr = cbind(segtiles$error, armtiles$error)
+  Xerr = cbind(seg.tile.error, arm.tile.error)
   Xerr_diag = apply(Xerr, 1, function(x) { diag(as.matrix(x^2)) })
   
   # covariance
   covB = cov(coef.error[,'jack.se',drop=F])[1]
-  X = t(mergedDf[,coef.error$coef,drop=F])
+  X = t(df[,coef.error$coef,drop=F])
   B = coef.error[,'1',drop=F] %>% data.frame
   
   Var_rr = apply(X,2,function(x) sum(x*covB*x)) + sapply(Xerr_diag, function(x) sum(B*x*B))
   perSampleError = sqrt( Var_rr )
-  
-  return(list('tiles'=mergedDf, 'residuals'=Xerr, 'per.sample.error'=perSampleError))  
+  return(list('error'=perSampleError, 'residuals'=Xerr))
 }
+
 
 predictRisk<-function(obj, merged.tiles, be.model = NULL, verbose=T) {
   if (is.null(be.model)) {
@@ -119,7 +123,7 @@ predictRisk<-function(obj, merged.tiles, be.model = NULL, verbose=T) {
   
   # Predict and generate absolute probabilities
   RR = predict(be.model$fit, newx=sparsed_test_data, s=be.model$lambda, type='link')
-  probs = pi.hat(RR)
+  probs = BarrettsProgressionRisk:::pi.hat(RR)
   
   per.sample.preds = full_join(tibble('Sample'=rownames(probs), 'Probability'=round(probs[,1],2), 
                                       'Relative Risk'=RR[,1], 'Risk'=sapply(probs[,1], .risk, be.model$pred.confidence)), 
@@ -369,10 +373,16 @@ rx<-function(brr, by=c('endoscopy','sample')) {
 .apply.rules<-function(preds,riskBy,pred.confidence,time=c('date','numeric')) {
   time = match.arg(time)
   
+  if (riskBy == 'Sample') warning('Rx rules are intended to be applied on a per-endoscopy basis, not per-sample.')
+  
+  if (!is.numeric.Date(preds[[riskBy]]) | !is.numeric(preds[[riskBy]])) {
+    time = 'numeric'
+    preds[[riskBy]] = factor(preds[[riskBy]])
+  }
+  
   preds = preds %>% rowwise() %>% dplyr::mutate(Risk = .risk(Probability, pred.confidence)) %>%
     mutate(Risk = factor(Risk, levels=c('Low','Moderate','High'), ordered=T))
   
-  ## TODO p53 could be 0,1 or normal,aberrant  
   p53Col = grep('p53', colnames(preds), value=T, ignore.case=T)
   pathCol = grep('pathology', colnames(preds), value=T, ignore.case=T)
   
@@ -384,6 +394,9 @@ rx<-function(brr, by=c('endoscopy','sample')) {
                  Rule = integer())
   if (time == 'numeric') 
     rules = tibble(`Time 1` = double(), `Time 2` = double(), Rule = integer())
+  
+  if (riskBy == 'Sample')
+    rules = add_column(rules,`Sample 1` = character(), `Sample 2` = character())  
 
   for (i in 1:nrow(preds)) {
     risks = table(preds$Risk[i:(i+1)])
@@ -404,12 +417,20 @@ rx<-function(brr, by=c('endoscopy','sample')) {
       rule = 4
     }
     
-    t1 = preds[[riskBy]][i]; t2 = preds[[riskBy]][(i+1)]
+    t1 = preds[[riskBy]][i] 
+    t2 = preds[[riskBy]][(i+1)]
     if (time == 'date') {
       t1 = as.Date(t1); t2 = as.Date(t2)
+    } else {
+      t1 = as.integer(t1); t2 = as.integer(t2)
     }
 
-    rules = add_row(rules, 'Time 1' = t1, 'Time 2' = t2, 'Rule' = rule  )
+    if (riskBy == 'Sample') {
+      rules = add_row(rules, 'Time 1' = t1, 'Time 2' = t2, 'Rule' = rule, 'Sample 1' = preds[[riskBy]][i], 'Sample 2' = preds[[riskBy]][i+1]  ) 
+    } else {
+      rules = add_row(rules, 'Time 1' = t1, 'Time 2' = t2, 'Rule' = rule) 
+    }
+
     if (i == nrow(preds)) break;
   }
   rules = rules %>% mutate(Rx = map_chr(Rule, .rule.rx))

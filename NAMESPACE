@@ -3,6 +3,7 @@
 export(absoluteRiskCI)
 export(adjustRisk)
 export(copyNumberMountainPlot)
+export(generate.internal.be.model)
 export(loadSampleInformation)
 export(patientEndoscopyPlot)
 export(patientRiskTilesPlot)

@@ -84,7 +84,7 @@ plotCorrectedCoverage<-function(brr, as=c('plot','list')) {
 #' @author skillcoyne
 #' @export
 showPredictionCalibration<-function(df=NULL) {
-  if (is.null(df)) df = BarrettsProgressionRisk:::be_model$pred.confidence
+  if (is.null(df)) df = BarrettsProgressionRisk:::be.model$pred.confidence
   
   mm = range(df[c('r1','r2')])
   

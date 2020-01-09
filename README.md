@@ -15,7 +15,11 @@ library(BarrettsProgressionRisk)
 # bamPath needs to contain one or more bam files for a patient
 runQDNAseq(bamPath='.', outputPath='qdnaseq_output/')
 
-pr = predictRisk(path='qdnaseq_output/')
+segObj = segmentRawData(loadSampleInformation('example/endoscopy.xlsx'), 
+  raw.data = 'example/qdnaseq.output.binSize50.rawReadCounts.txt', 
+  fit.data = 'example/qdnaseq.output.binSize50.fittedReadCounts.txt', verbose=F)
+
+pr = predictRiskFromSegments(segObj, verbose=F)
 
 ## Results
 
@@ -25,15 +29,23 @@ sampleResiduals(pr)
 # plot raw data
 plotSegmentData(pr)
 
-# output the absolute risk per sample
-predictions(pr)
+# risk per sample
+predictions(pr,'sample')
+
+# risk per endoscopy
+predictions(pr,'endoscopy')
+
 
 # output the absolute risk CI per sample
-absoluteRiskCI(pr)
+absoluteRiskCI(pr, 'sample')
 
-# Get recommendations per sample pair (this assumes sequential timepoints per sample), if p53 IHC or pathology are available in a per-sample tab-separated file it can be included in this function call with rx(pr, myFile.txt)
+# output the absolute risk CI per endoscopy
+absoluteRiskCI(pr, 'endoscopy')
+
+
+# Get recommendations per endoscopy, given as either sequential integers or dates in the sample information loaded initially.
+
 rx(pr)
-
 
 ```
 

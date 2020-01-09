@@ -145,13 +145,13 @@ medianFilter <- function(x,k){
   filtWidth <- 2*k + 1
 
   #Make sure filtWidth does not exceed n
-  if(filtWidth > n){
-    if(n==0){
+  if (filtWidth > n) {
+    if (n==0) {
       filtWidth <- 1
-    }else if(n%%2 == 0){
+    } else if (n%%2 == 0) {
       #runmed requires filtWidth to be odd, ensure this:
       filtWidth <- n - 1
-    }else{
+    } else {
       filtWidth <- n
     }
   }
@@ -255,7 +255,6 @@ generate.internal.be.model<-function(model.dir, saveObj=F) {
   rm(plots,performance.at.1se, fits, coefs)
   load(paste0(model.dir, '/model_data.Rdata'), verbose=F)
   load(paste0(model.dir, '/all.pt.alpha.Rdata'), verbose=F)
-  load(paste0(model.dir, '/all.pt.alpha.Rdata'), verbose=F)
 
   orig.labels = tibble::enframe(labels) %>% mutate(SampleId = row_number())
   
@@ -275,24 +274,26 @@ generate.internal.be.model<-function(model.dir, saveObj=F) {
   ids = pg.samp %>% dplyr::select(Hospital.Research.ID, Patient) %>% distinct %>% 
     dplyr::filter(Hospital.Research.ID %in% names(nzcoefs))
 
-  nzcoefs = nzcoefs[ids$Hospital.Research.ID]
+  col = 'Patient'
+  if (length(which(names(nzcoefs) %in% ids$Hospital.Research.ID)) == length(nzcoefs)) col = 'Hospital.Research.ID'
+  
+  nzcoefs = nzcoefs[ ids[[col]]  ]
   names(nzcoefs) = as.character(ids$Patient)
   nzcoefs = purrr::map(nzcoefs, function(x) as_tibble(x, rownames = 'coef'))
 
   cxPredictions = pg.samp %>% 
     dplyr::select(Patient, Status, matches('Endoscopy'), Pathology, matches('Age|Sex|Gender'), Block, Samplename,  matches('Prediction|Probability'), RR) %>% 
     left_join(orig.labels, by=c('Samplename' = 'name') ) %>% dplyr::select(-Samplename, -value) %>% 
-    dplyr::rename_at(vars(matches('Prediction')), list(~sub('Probability',.))) %>%
+    dplyr::rename_at(vars(matches('Prediction')), list(~sub('Prediction', 'Probability',.))) %>%
     dplyr::rename(Samplename = 'SampleId', `Relative Risk` = 'RR') %>% 
     dplyr::select(Patient, Samplename, Status, everything()) %>% 
     mutate(quants = cut(Probability, breaks=cuts, include.lowest = T))
   
   pred.conf = BarrettsProgressionRisk:::model.pred.confidence(cxPredictions)  
+
+  be_model = BarrettsProgressionRisk:::be.model.fit(fitV, lambda, 50, 5e6, z.mean, z.arms.mean, z.sd, z.arms.sd, mn.cx, sd.cx, nzcoefs, coef_cv_RR, pred.conf)  
   
-  
-  be_model = BarrettsProgressionRisk:::be.model.fit(fitV, lambda, 5e6, z.mean, z.arms.mean, z.sd, z.arms.sd, mn.cx, sd.cx, nzcoefs, coef_cv_RR, pred.conf)  
-  
-  if (saveObj) saveRDS(be_model, file='R/sysdata.rda', version=2)
+  if (saveObj) save(be_model, file='R/sysdata.rda')
   
   return(be_model)
 }

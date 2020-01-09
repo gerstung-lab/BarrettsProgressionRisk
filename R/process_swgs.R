@@ -234,19 +234,20 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=readr::read_tsv(sys
     stop("raw and fit data must be provided as data frames with columns: location, chrom, start, end followed by sample column(s).")
   }
 
-  qkb = raw.data %>% dplyr::mutate(qkb = (end-start)/1e3) %>% 
-    dplyr::summarise(qkb=round(mean(qkb))) %>% pull
+  qkb = raw.data %>% dplyr::mutate(qkb = (end-start)/1e3) %>% dplyr::summarise(qkb=round(mean(qkb))) %>% pull
   
-  if (qkb != be_model$qdnaseq_kb)
-    warning(paste0("Model requires QDNAseq bin size of ",be_model$qdnaseq_kb,'kb, data processed at',qkb,'kb, predictions will be inaccurate.'))
+  if (qkb != BarrettsProgressionRisk:::be_model$qdnaseq_kb)
+    warning(paste0("Model requires QDNAseq bin size of ",BarrettsProgressionRisk:::be_model$qdnaseq_kb,'kb, data processed at ',qkb,'kb, predictions will be inaccurate.'))
   
   if (qkb != kb)
     stop(paste0("QDNAseq data was processed at bin size ", qkb, "kb, kb parameter is set to ", kb,'kb.'))
   
   chr.info = chrInfo(build=build)
   
-  fit.data =  fit.data %>% dplyr::mutate_at(vars(matches('chr')), list(factor),levels=levels(chr.info$chr), ordered=T) %>% dplyr::arrange_at( vars(matches('chr'), matches('start')), list() )
-  raw.data = raw.data %>% mutate_at(vars(matches('chr')), list(factor),levels=levels(chr.info$chr), ordered=T) %>% dplyr::arrange_at( vars(matches('chr'), matches('start')), list() )
+  fit.data =  fit.data %>% dplyr::mutate_at(vars(matches('chr')), list(factor),levels=levels(chr.info$chr), ordered=T) %>%
+    dplyr::arrange_at( vars(matches('chr'), matches('start')), list() )
+  raw.data = raw.data %>% mutate_at(vars(matches('chr')), list(factor),levels=levels(chr.info$chr), ordered=T) %>% 
+    dplyr::arrange_at( vars(matches('chr'), matches('start')), list() )
   
   countCols = grep('loc|feat|chr|start|end', colnames(fit.data), invert=T)
   if (length(countCols) == 1) {

@@ -2,12 +2,12 @@ Package: BarrettsProgressionRisk
 Title: Risk progression from Barrett's Esophagus to Adenocarcinoma
 Version: 0.5.0.1
 Authors@R: person("Sarah","Killcoyne", email="skillcoy@ebi.ac.uk", role=c("aut","cre"))
-Description: Process and predict risk of progression from shallow WGS data.
+Description: Process and predict risk of progression from shallow WGS data. 
 License: GPL-3
 Encoding: UTF-8
 LazyData: true
 Depends:
-  R (>= 3.4.1),
+  R (>= 3.5.2),
   tidyverse,
   glmnet (>= 2.0-16),
   copynumber (>= 1.18.0),
@@ -18,7 +18,6 @@ Imports:
   QDNAseq (>= 1.14.0),
   Biobase,
   bootstrap,
-  data.table,
   gridExtra,
   grid,
   ggrepel,
