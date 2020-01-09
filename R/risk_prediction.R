@@ -85,12 +85,12 @@ tileSamples<-function(obj, be.model=NULL, scale=T, MARGIN=2, verbose=T) {
   mergedDf = subtractArms(segtiles$tiles, armtiles$tiles)
   mergedDf = cbind(mergedDf, 'cx'=cx.score)
   
-  pse = per.sample.error(mergedDf, segtiles$error, armtiles$error)
+  pse = per.sample.error(mergedDf, segtiles$error, armtiles$error, be.model)
   
   return(list('tiles'=mergedDf, 'residuals'=pse$Xerr, 'per.sample.error'=pse$error))  
 }
 
-per.sample.error<-function(df, seg.tile.error, arm.tile.error) {
+per.sample.error<-function(df, seg.tile.error, arm.tile.error, be.model) {
   # get the bootstrap errors for coefficients  
   coef.error = .bootstrap.coef.stderr(be.model)
   
