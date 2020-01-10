@@ -12,12 +12,14 @@ Using your own data and the qdnaseq.R script found in the example/ directory fir
 
 library(BarrettsProgressionRisk)
 
-# bamPath needs to contain one or more bam files for a patient
-runQDNAseq(bamPath='.', outputPath='qdnaseq_output/')
+# Load example data set
+data(package='BarrettsProgressionRisk',ExampleQDNAseqData)
 
-segObj = segmentRawData(loadSampleInformation('example/endoscopy.xlsx'), 
-  raw.data = 'example/qdnaseq.output.binSize50.rawReadCounts.txt', 
-  fit.data = 'example/qdnaseq.output.binSize50.fittedReadCounts.txt', verbose=F)
+print(fit.data)
+print(raw.data)
+print(info)
+
+segObj = segmentRawData(loadSampleInformation(info), raw.data, fit.data, verbose=F) 
 
 pr = predictRiskFromSegments(segObj, verbose=F)
 
@@ -32,15 +34,27 @@ plotSegmentData(pr)
 # risk per sample
 predictions(pr,'sample')
 
+# Per sample mountain plots with annotations for coefficients
+copyNumberMountainPlot(pr, annotate=T)
+
+
+# TODO error
+patientRiskTilesPlot(pr)
+
+# TODO error
+patientEndoscopyPlot(pr)
+
+
 # risk per endoscopy
 predictions(pr,'endoscopy')
-
 
 # output the absolute risk CI per sample
 absoluteRiskCI(pr, 'sample')
 
 # output the absolute risk CI per endoscopy
 absoluteRiskCI(pr, 'endoscopy')
+
+
 
 
 # Get recommendations per endoscopy, given as either sequential integers or dates in the sample information loaded initially.

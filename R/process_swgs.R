@@ -244,10 +244,11 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=readr::read_tsv(sys
   
   chr.info = chrInfo(build=build)
   
-  fit.data =  fit.data %>% dplyr::mutate_at(vars(matches('chr')), list(factor),levels=levels(chr.info$chr), ordered=T) %>%
-    dplyr::arrange_at( vars(matches('chr'), matches('start')), list() )
-  raw.data = raw.data %>% mutate_at(vars(matches('chr')), list(factor),levels=levels(chr.info$chr), ordered=T) %>% 
-    dplyr::arrange_at( vars(matches('chr'), matches('start')), list() )
+  fit.data = fit.data %>% dplyr::mutate_at(vars(dplyr::matches('chr')),list(factor),levels=levels(chr.info$chr), ordered=T) %>%
+    dplyr::arrange_at( vars(dplyr::matches('chr'), dplyr::matches('start')), list() )
+  
+  raw.data = raw.data %>% mutate_at(vars(dplyr::matches('chr')), list(factor),levels=levels(chr.info$chr), ordered=T) %>% 
+    dplyr::arrange_at( vars(dplyr::matches('chr'), dplyr::matches('start')), list() )
   
   countCols = grep('loc|feat|chr|start|end', colnames(fit.data), invert=T)
   if (length(countCols) == 1) {
@@ -292,7 +293,7 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=readr::read_tsv(sys
     
     segs = lapply(smps, function(s) {
       if (verbose) message(s)
-      tmp = data %>% dplyr::select(chrom,start,matches(s))
+      tmp = data %>% dplyr::select(chrom,start,dplyr::matches(s))
       res = copynumber::pcf( data=tmp, gamma=gamma2*sdev, fast=F, verbose=verbose, return.est=F, assembly=build)
       colnames(res)[grep('mean', colnames(res))] = s
       res$sampleID = NULL
@@ -314,7 +315,7 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=readr::read_tsv(sys
     probes = which(x$n.probes < min.probes)
     round(length(probes)/nrow(x),3)
   }
-  prb.ratio = sapply(smps, function(s)  prb(res %>% dplyr::select(chrom, n.probes, matches(s))) )
+  prb.ratio = sapply(smps, function(s)  prb(res %>% dplyr::select(chrom, n.probes, dplyr::matches(s))) )
   if (verbose) {
     message(paste0('Per sample ratio of segments with fewer than ', min.probes, ' "probes" - '))
     print(prb.ratio)
@@ -333,7 +334,7 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=readr::read_tsv(sys
     round(sum(as.numeric(with(x, end.pos-start.pos)),na.rm=T)/(chr.info %>% filter(chr == 22) %>% dplyr::select(genome.length) %>% pull),3)
   }
   
-  coverage = sapply(smps, function(s)  cvg(res %>% dplyr::select(chrom, start.pos, end.pos, matches(s))) )
+  coverage = sapply(smps, function(s)  cvg(res %>% dplyr::select(chrom, start.pos, end.pos, dplyr::matches(s))) )
   #coverage = round(sum(as.numeric(with(res, end.pos-start.pos)),na.rm=T)/chr.info[22,'genome.length'],3)
   if (verbose) message(paste(round(mean(coverage),2), 'of the genome covered by segments.'))
   
@@ -365,7 +366,7 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=readr::read_tsv(sys
   digits = length(unlist((strsplit(unlist(strsplit(as.character(cutoff), '\\.'))[2], ''))))
   pvr = pvr %>% mutate_at(vars(contains('MAD')), list(round), digits) %>% mutate(Pass = round(pvr$varMAD_median, 3) <= cutoff)
   
-  qcsamples = pvr %>% filter(Pass) %>% dplyr::select(matches('sample')) %>% pull
+  qcsamples = pvr %>% filter(Pass) %>% dplyr::select(dplyr::matches('sample')) %>% pull
   if (verbose) message(paste(length(qcsamples), '/', nrow(pvr), ' samples passed QC.', sep=''))
 
   passedQC = res[,c(1:5,grep(paste(qcsamples,collapse='|'), colnames(res)))]
@@ -428,7 +429,7 @@ tileSegments<-function(swgsObj, size=5e6, verbose=T) {
     stop("Size must be numeric, or 'arms'")
 
   if (checkErr) {
-    resids = swgsObj$segment.residual.MSE[as.character((swgsObj$residuals %>% dplyr::filter(Pass) %>% dplyr::select(matches('sample')) %>% pull))] 
+    resids = swgsObj$segment.residual.MSE[as.character((swgsObj$residuals %>% dplyr::filter(Pass) %>% dplyr::select(dplyr::matches('sample')) %>% pull))] 
   }
   
   if (!is_tibble(data)) data = as_tibble(data)
@@ -629,8 +630,8 @@ prepRawSWGS<-function(raw.data,fit.data,blacklist = readr::read_tsv(system.file(
 
   sortedCountCols = intersect(colnames(raw.data), colnames(fit.data))
 
-  raw.data = raw.data %>% dplyr::select(matches('loc|feat|chr|start|end'), sortedCountCols)
-  fit.data = fit.data %>% dplyr::select(matches('loc|feat|chr|start|end'), sortedCountCols)
+  raw.data = raw.data %>% dplyr::select(dplyr::matches('loc|feat|chr|start|end'), sortedCountCols)
+  fit.data = fit.data %>% dplyr::select(dplyr::matches('loc|feat|chr|start|end'), sortedCountCols)
   
   countCols = grep('loc|feat|chr|start|end', colnames(fit.data), invert=T)
   infoCols = grep('loc|feat|chr|start|end', colnames(fit.data))

@@ -1,5 +1,5 @@
 library(testthat)
-library(BarrettsProgressionRisk)
+suppressPackageStartupMessages(library(BarrettsProgressionRisk))
 
 test_check("BarrettsProgressionRisk")
 

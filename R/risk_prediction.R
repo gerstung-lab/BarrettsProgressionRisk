@@ -2,7 +2,7 @@ require(tidyverse)
 
 be.model.fit<-function(model, s, kb, tile.size, 
                        tile.mean, arms.mean, tile.sd, arms.sd, 
-                       cx.mean, cx.sd, per.pt.nzcoefs, cvRR, pconf = NULL) {
+                       cx.mean, cx.sd, per.pt.nzcoefs, cvRR, df = NULL, pconf = NULL) {
 
   if (is.null(pconf)) pconf = pred.confidence
   
@@ -10,7 +10,7 @@ be.model.fit<-function(model, s, kb, tile.size,
     fit = model, lambda = s, qdnaseq_kb = kb, tile.size = tile.size,
     tile.mean = tile.mean, arms.mean = arms.mean, tile.sd = tile.sd,
     arms.sd = arms.sd, cx.mean = cx.mean,  cx.sd = cx.sd, 
-    nzcoefs = per.pt.nzcoefs, cvRR = cvRR,
+    nzcoefs = per.pt.nzcoefs, cvRR = cvRR, fit.data = df,
     pred.confidence = pconf
   )
   
@@ -127,13 +127,14 @@ predictRisk<-function(obj, merged.tiles, be.model = NULL, verbose=T) {
   
   per.sample.preds = full_join(tibble('Sample'=rownames(probs), 'Probability'=round(probs[,1],2), 
                                       'Relative Risk'=RR[,1], 'Risk'=sapply(probs[,1], .risk, be.model$pred.confidence)), 
-                               obj$sample.info %>% dplyr::filter(Sample %in% as.character(sampleResiduals(obj) %>% dplyr::filter(Pass) %>% dplyr::select(matches('sample')) %>% pull) ), 
+                               obj$sample.info %>% dplyr::filter(Sample %in% as.character(sampleResiduals(obj) %>% dplyr::filter(Pass) %>% dplyr::select(dplyr::matches('sample')) %>% pull) ), 
                                by='Sample')
   
-  per.endo.preds = .setUpRxTablePerEndo(per.sample.preds, 'max', verbose) %>% rowwise() %>% mutate( Risk=.risk(Probability,be.model$pred.confidence))
+  per.endo.preds = .setUpRxTablePerEndo(per.sample.preds, 'max', verbose) %>% rowwise() %>% 
+    mutate( Risk=.risk(Probability,be.model$pred.confidence))
   perEndoError = .setUpRxTablePerEndo(perSampleError, 'max', F) %>% dplyr::select('Endoscopy','Error')
   
-  psp = list('per.endo'=per.endo.preds, 'per.sample'=per.sample.preds, 'segmented'=obj, 'per.sample.error'=perSampleError, 'per.endo.error'=perEndoError, 'tiles'=merged.tiles$tiles, 'be.model' = be.model)
+  psp = list('per.endo'=per.endo.preds, 'per.sample'=per.sample.preds, 'segmented'=obj, 'per.sample.error'=perSampleError, 'per.endo.error'=perEndoError, 'tiles'=merged.tiles$tiles, 'tiles.resid'=merged.tiles$residuals, 'be.model'=be.model)
   
   class(psp) <- c('BarrettsRiskRx', class(psp))
   return(psp)
@@ -172,7 +173,7 @@ predictRiskFromSegments<-function(obj, be.model = NULL, verbose=T) {
   })
   
   # Predict  
-  psp = predictRisk(obj, binnedSamples, be.model)
+  psp = predictRisk(obj, binnedSamples, be.model, verbose)
   return(psp)
 }
 
@@ -468,7 +469,7 @@ rx<-function(brr, by=c('endoscopy','sample')) {
   
   if (func == 'max') {
     predDf = predDf %>% group_by(Endoscopy) %>% dplyr::mutate('n.samples'=length(Endoscopy),'Samples'=paste(Sample,collapse=',')) %>% 
-      dplyr::summarise_if(is.numeric, list(max)) %>% dplyr::select(-matches('^Sample$'))
+      dplyr::summarise_if(is.numeric, list(max)) %>% dplyr::select(-dplyr::matches('^Sample$'))
   } else {
     predDf = predDf %>% group_by(Endoscopy) %>% dplyr::mutate('n.samples'=length(Endoscopy), 'Samples'=paste(Sample,collapse=',')) %>%  
         dplyr::summarise_if(is.numeric, list(mean))

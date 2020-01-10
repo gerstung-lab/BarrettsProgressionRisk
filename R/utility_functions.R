@@ -291,7 +291,7 @@ generate.internal.be.model<-function(model.dir, saveObj=F) {
   
   pred.conf = BarrettsProgressionRisk:::model.pred.confidence(cxPredictions)  
 
-  be_model = BarrettsProgressionRisk:::be.model.fit(fitV, lambda, 50, 5e6, z.mean, z.arms.mean, z.sd, z.arms.sd, mn.cx, sd.cx, nzcoefs, coef_cv_RR, pred.conf)  
+  be_model = BarrettsProgressionRisk:::be.model.fit(fitV, lambda, 50, 5e6, z.mean, z.arms.mean, z.sd, z.arms.sd, mn.cx, sd.cx, nzcoefs, coef_cv_RR, dysplasia.df, pred.conf)  
   
   if (saveObj) save(be_model, file='R/sysdata.rda')
   
