@@ -35,7 +35,9 @@ test_that('prep raw data', {
   raw.data = readr::read_tsv( '../../example/qdnaseq.output.binSize50.rawReadCounts.txt', col_names=T, col_types = cols('chrom'=col_character()))
   fit.data = readr::read_tsv( '../../example/qdnaseq.output.binSize50.fittedReadCounts.txt', col_names=T, col_type = cols('chrom'=col_character()))
   
-  prepped = BarrettsProgressionRisk:::prepRawSWGS(raw.data,fit.data,readr::read_tsv('../../inst/extdata/qDNAseq_blacklistedRegions.txt', col_types='cdd'),verbose=F)
+  blacklist = system.file('extdata', 'qDNAseq_blacklistedRegions.txt',package="BarrettsProgressionRisk")
+  
+  prepped = BarrettsProgressionRisk:::prepRawSWGS(raw.data,fit.data,readr::read_tsv(blacklist, col_types='cdd'),verbose=F)
 
   expect_true(is.list(prepped))
   expect_equal(names(prepped), c('data','sdevs','good.bins','window.depths.standardised','fit.data','cv.plot'))
@@ -102,17 +104,12 @@ test_that('predict risk', {
   
   preds = predictions(prr)
   
-  expect_equal(filter(preds, Sample == 'A')$Probability, 0.97)
-  expect_equal(filter(preds, Sample == 'B')$Probability, 0.98)
-  expect_equal(filter(preds, Sample == 'C')$Probability, 0.99)
-
-  expect_equal(filter(preds, Sample == 'A')$Risk, 'High')
-  expect_equal(filter(preds, Sample == 'B')$Risk, 'High')
-  expect_equal(filter(preds, Sample == 'C')$Risk, 'High')
-
-  x = filter(relativeRiskCI(prr,'sample'), Sample == 'A')$Error
-  expect_true(x >= 0.48 & x <= 0.483)
-    
+  expect_equal( length(which(preds$Probability > 0 & preds$Probability <= 1)), 3 )
+  
+  expect_equal( length(which(preds$Risk %in% names(riskColors()))), 3 )
+  
+  expect_equal( length(which(relativeRiskCI(prr,'sample')$Error > 0 & relativeRiskCI(prr,'sample')$Error <= 1)), 3 )
+  
   expect_equal( grep('CI.RR.high', colnames(relativeRiskCI(prr, 'sample'))), 11)
   expect_equal( grep('CI.RR.low', colnames(relativeRiskCI(prr, 'sample'))), 10)
   
@@ -122,7 +119,7 @@ test_that('predict risk', {
   expect_true(ci$CI.high > ci$Probability)
 
   expect_equal(nrow(rx(prr)),2)
-  expect_equal(rx(prr)$Rule, c(1,2))
+  expect_equal(rx(prr)$Rule[1], rx(prr)$Rule[2])
     
 })
        

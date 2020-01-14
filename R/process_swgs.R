@@ -104,7 +104,6 @@ runQDNAseq<-function(bam=NULL,path=NULL,outputPath=NULL, minMapQ=37, binsize=50)
 #' @export
 loadSampleInformation<-function(samples, path=c('NDBE','ID','LGD','HGD','IMC','OAC')) {
   if (is.character(samples)) {
-    #sample.info = .readFile(samples, col_types = cols('Patient ID'=col_character(), 'Pathology'=col_character(), 'Sample'=col_character(), 'P53 IHC'=col_integer()))
     sample.info = .readFile(samples)
   } else if (is.data.frame(samples)) {
     sample.info = samples
@@ -117,11 +116,14 @@ loadSampleInformation<-function(samples, path=c('NDBE','ID','LGD','HGD','IMC','O
 
   colnames(sample.info) = .titleCase(colnames(sample.info))
   
-  exp_cols = c('Pathology','GEJ.Distance', 'P53 IHC')
-  cols_found = sapply( exp_cols, function(x) x %in% colnames(sample.info) )
-    
-  if (length(which(!cols_found)) > 0)
-    warning(paste0('Missing expected columns from sample information: ',paste(names(which(!cols_found)), collapse=', '), ". Recommendations will be based on predicted risks and: ",paste(names(which(cols_found)), collapse=', ')) )
+  col_regex = 'Pathology|GEJ(\\.| )Distance|P53(\\.| )IHC'
+  cols_found = grep(col_regex, colnames(sample.info), value=T, ignore.case = T)
+
+  if (length(cols_found) < 3) {
+    message = paste0("Missing expected columns from sample information. Recommendations will be based on predicted risks")
+    if (length(cols_found) > 0) message = paste0(message, ' and: ', paste(cols_found,collapse=','))
+    warning(message)
+  }
 
   endo.date<-function(endo) {
     if (is.character(endo)) {
@@ -136,18 +138,40 @@ loadSampleInformation<-function(samples, path=c('NDBE','ID','LGD','HGD','IMC','O
       as.Date(endo)
     }
   }
-
+  
+  # Don't change the factor if it's already done.
+  gej_col = grep('GEJ(\\.| )Distance', colnames(sample.info), value=T)
+  if (length(gej_col) > 0 && !is.factor(sample.info[[gej_col]])) {
+    gej.dist<-function(gej) {
+        funct = case_when(
+          length(which(is.na(as.numeric(gej)))) <= 0 ~ 'as.numeric',
+          length(which(is.na(as.character(gej)))) <= 0 ~ 'as.character'
+        )
+        sapply(gej, eval(funct))
+      }
+  
+    sample.info = sample.info %>% 
+      dplyr::mutate_at(dplyr::vars(!!gej_col), list(~gej.dist(.)))  
+    
+    levels = sort(sample.info %>% dplyr::select(!!gej_col) %>% distinct %>% pull)
+  
+    sample.info = sample.info %>% 
+      dplyr::mutate_at(dplyr::vars(!!gej_col), list(~factor(., levels=levels, ordered=T)))
+  }  
+  
+  p53_col = grep('P53', colnames(sample.info), value=T)
+  if (length(p53_col) > 0 && 
+      length(grep('Normal|Aberrant', dplyr::select(sample.info, !!p53_col) %>% distinct %>% pull)) > 0) {
+    sample.info = sample.info %>% 
+      dplyr::mutate_at(dplyr::vars(matches('P53')), list(~factor(., levels=c('Normal','Aberrant'), ordered=T)))
+  } else {
+    sample.info = sample.info %>% dplyr::mutate_at(dplyr::vars(dplyr::matches('P53')), list(~factor(., levels=c(0,1), labels=c('Normal','Aberrant'), ordered=T)))
+  }
+  
   sample.info = sample.info %>% rowwise %>% dplyr::mutate(Endoscopy = endo.date(Endoscopy))
-  
-  #sample.info$Endoscopy = factor(sample.info$Endoscopy, ordered=T)
-  
-  pathCol = grep('Pathology',colnames(sample.info))
-  if (length(pathCol) > 0) 
-    sample.info[[pathCol]] = factor(sample.info[[pathCol]], levels=path, labels=path, ordered=T)
-  
-  p53Col = grep('P53',colnames(sample.info))
-  if (length(p53Col) > 0) 
-    sample.info[[p53Col]] = factor(sample.info[[p53Col]], levels=c(0,1), labels=c('Normal','Aberrant'), ordered=T)
+
+  sample.info = sample.info %>% 
+    dplyr::mutate_at(dplyr::vars(dplyr::matches('Pathology')), list(~factor(., levels=path, ordered=T))) 
 
   class(sample.info) <- c('SampleInformation', class(sample.info))
   return(sample.info)

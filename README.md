@@ -15,15 +15,24 @@ library(BarrettsProgressionRisk)
 # Load example data set
 data(package='BarrettsProgressionRisk',ExampleQDNAseqData)
 
+# bamPath needs to contain one or more bam files for a patient, the default binsize is 50. 
+# This should not be changed without extensive testing of the data unless you are retraining the underlying model!  
+
+# example of fitted data output from QDNAseq function call: runQDNAseq(bamPath='.', outputPath='<my path>/', binsize=50)
 print(fit.data)
+# example of raw data output from QDNAseq function call
 print(raw.data)
+
+# example of sample information table
 print(info)
 
+# Segment the fitted and raw data
 segObj = segmentRawData(loadSampleInformation(info), raw.data, fit.data, verbose=F) 
 
+# Predict risks from segmented data
 pr = predictRiskFromSegments(segObj, verbose=F)
 
-## Results
+## -- Results  -- ##
 
 # get QC information
 sampleResiduals(pr)
@@ -31,34 +40,32 @@ sampleResiduals(pr)
 # plot raw data
 plotSegmentData(pr)
 
-# risk per sample
-predictions(pr,'sample')
-
 # Per sample mountain plots with annotations for coefficients
 copyNumberMountainPlot(pr, annotate=T)
 
+### Per sample classifications/probabilities
 
-# TODO error
-patientRiskTilesPlot(pr)
-
-# TODO error
-patientEndoscopyPlot(pr)
-
-
-# risk per endoscopy
-predictions(pr,'endoscopy')
+# risk per sample for samples that pass QC (see sampleResiduals(...))
+predictions(pr,'sample')
 
 # output the absolute risk CI per sample
 absoluteRiskCI(pr, 'sample')
 
+# Plot the sample classifications by Endoscopy and location 
+patientRiskTilesPlot(pr)
+
+### Per endoscopy classifications/probabilities
+
+# risk per endoscopy
+predictions(pr,'endoscopy')
+
 # output the absolute risk CI per endoscopy
 absoluteRiskCI(pr, 'endoscopy')
 
-
-
+# Plot the endoscopy predictions over time, with risk classifications and confidence intervals based on the table output by absoluteRiskCI(...)
+patientEndoscopyPlot(pr)
 
 # Get recommendations per endoscopy, given as either sequential integers or dates in the sample information loaded initially.
-
 rx(pr)
 
 ```
@@ -77,14 +84,11 @@ library(knitr)
 
 # bamPath needs to contain one or more bam files for a patient, the default binsize is 50. 
 # This should not be changed without extensive testing of the data unless you are retraining the underlying model!  
-BarrettsProgressionRisk::runQDNAseq(bamPath='.', outputPath=<path to qdnaseq output>,  binsize=50)
+# BarrettsProgressionRisk::runQDNAseq(bamPath='.', outputPath=<path to qdnaseq output>,  binsize=50)
 
 
-# qdnaseq.path=<path to qdnaseq output>
-qdnaseq.path='examples/'
-# info.file=<path to per sample p53 IHC/pathology file>
-info.file = 'example/endoscopy.xlsx'
-
+qdnaseq.path=system.file('extdata/example',package="BarrettsProgressionRisk")
+info.file = system.file('extdata/example','endoscopy.xlsx',package="BarrettsProgressionRisk")
 output.dir='~/tmp'
 
 options(warn = -1)

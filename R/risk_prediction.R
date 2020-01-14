@@ -109,7 +109,7 @@ per.sample.error<-function(df, seg.tile.error, arm.tile.error, be.model) {
 }
 
 
-predictRisk<-function(obj, merged.tiles, be.model = NULL, verbose=T) {
+predictRisk<-function(obj, merged.tiles, be.model=NULL, verbose=T) {
   if (is.null(be.model)) {
     be.model = BarrettsProgressionRisk:::be_model
   } 
@@ -119,7 +119,8 @@ predictRisk<-function(obj, merged.tiles, be.model = NULL, verbose=T) {
   for(i in colnames(merged.tiles$tiles)) sparsed_test_data[,i] = merged.tiles$tiles[,i]
   
   perSampleError = tibble('Sample'=names(merged.tiles$per.sample.error),'Error'=merged.tiles$per.sample.error)
-  perSampleError = left_join(perSampleError, obj$sample.info, by='Sample') %>% dplyr::select('Sample','Error','Endoscopy')
+  perSampleError = left_join(perSampleError, obj$sample.info, by='Sample') %>% 
+    dplyr::select('Sample','Error','Endoscopy')
   
   # Predict and generate absolute probabilities
   RR = predict(be.model$fit, newx=sparsed_test_data, s=be.model$lambda, type='link')
@@ -166,7 +167,7 @@ predictRiskFromSegments<-function(obj, be.model = NULL, verbose=T) {
     
   # Tile, scale, then merge segmented values into 5Mb and arm-length windows across the genome.
   binnedSamples = tryCatch({
-    tileSamples(obj, be.model, verbose)
+    tileSamples(obj, be.model, scale=T, MARGIN=2, verbose=verbose)
   }, error = function(e) {
     msg = paste("ERROR tiling segmented data:", e)
     stop(msg)
@@ -375,14 +376,16 @@ rx<-function(brr, by=c('endoscopy','sample')) {
   time = match.arg(time)
   
   if (riskBy == 'Sample') warning('Rx rules are intended to be applied on a per-endoscopy basis, not per-sample.')
-  
-  if (!is.numeric.Date(preds[[riskBy]]) | !is.numeric(preds[[riskBy]])) {
+
+  time = 'date'  
+  if (!class(preds[[riskBy]]) %in% 'Date' || is.numeric(preds[[riskBy]])) {
     time = 'numeric'
     preds[[riskBy]] = factor(preds[[riskBy]])
   }
   
-  preds = preds %>% rowwise() %>% dplyr::mutate(Risk = .risk(Probability, pred.confidence)) %>%
-    mutate(Risk = factor(Risk, levels=c('Low','Moderate','High'), ordered=T))
+  preds = preds %>% rowwise() %>%
+    dplyr::mutate(Risk = .risk(Probability, pred.confidence)) %>%
+    mutate(Risk = factor(Risk, levels=names(riskColors()), ordered=T))
   
   p53Col = grep('p53', colnames(preds), value=T, ignore.case=T)
   pathCol = grep('pathology', colnames(preds), value=T, ignore.case=T)
@@ -432,10 +435,14 @@ rx<-function(brr, by=c('endoscopy','sample')) {
       rules = add_row(rules, 'Time 1' = t1, 'Time 2' = t2, 'Rule' = rule) 
     }
 
+    # If the last pair resulted in an increased surveillance rx than this one should do as well?
+    if ( i == nrow(preds) && rules[i,'Rule'] > rules[(i-1), 'Rule'] ) rules[i,'Rule'] = rules[(i-1), 'Rule'] 
+    
     if (i == nrow(preds)) break;
   }
   rules = rules %>% mutate(Rx = map_chr(Rule, .rule.rx))
   
+
   return(rules)
 }
 

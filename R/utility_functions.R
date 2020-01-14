@@ -48,7 +48,7 @@ getcachedir<-function() {
 }
 
 # Renames 'get.chr.lengths'
-chrInfo<-function(chrs=c(1:22, 'X','Y'), prefix='chr', build='hg19', file=NULL) {
+chrInfo<-function(chrs=c(1:22, 'X','Y'), prefix='chr', build='hg19', file=NULL, verbose=F) {
   local_file =  paste(build,'_info.txt',sep='')
   
   local_file = system.file("extdata", local_file, package="BarrettsProgressionRisk")
@@ -60,7 +60,7 @@ chrInfo<-function(chrs=c(1:22, 'X','Y'), prefix='chr', build='hg19', file=NULL) 
     file = tmp_file
   }
 
-  if (!is.null(file) && file.exists(file)) {
+  if (!is.null(file) && file.exists(file) && verbose) {
     message(paste0("Reading chromosome information for build ",build," from ",file))
     
     chr.lengths = read.table(file, header = T, sep='\t', colClasses = c(character(), numeric(), numeric(), numeric(), numeric()), stringsAsFactors = F) %>% as_tibble()

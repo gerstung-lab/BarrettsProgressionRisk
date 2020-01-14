@@ -86,6 +86,9 @@ plotCorrectedCoverage<-function(brr, as=c('plot','list')) {
 showPredictionCalibration<-function(df=NULL) {
   if (is.null(df)) df = BarrettsProgressionRisk:::be_model$pred.confidence
   
+  if (!is.factor(df$Risk))
+    df = df %>% mutate(Risk = factor(Risk, levels=names(riskColors()), ordered=T))
+  
   mm = range(df[c('r1','r2')])
   
   cuts = seq(mm[1], mm[2], by=df$r1[2])
@@ -97,7 +100,7 @@ showPredictionCalibration<-function(df=NULL) {
   
   ggplot(df, aes(mn, perc)) + 
     geom_rect(aes(xmin=r1, xmax=r2, ymin=0,ymax=1, fill=Risk), alpha=0.6) + 
-    scale_fill_manual(values=riskColors(), limits=levels(df$Risk) ) +
+    scale_fill_manual(values=unlist(riskColors()), limits=levels(df$Risk) ) +
     geom_vline(xintercept=cuts[2:(length(cuts)-1)], color='grey88') +
     geom_smooth(method='lm',formula=y~x, color='grey39', linetype='dashed', fill='grey88', size=0.5, fullrange=T) + 
     geom_point() + geom_errorbar(aes(ymin=ci.low, ymax=ci.high), size=0.5, width=0.01) +
@@ -163,17 +166,22 @@ patientRiskTilesPlot<-function(brr, col='Endoscopy', direction=c('fwd','rev')) {
   }
 
   gej.dist = grep('Distance',colnames(preds),value=T)
-  
   if (length(gej.dist) > 0 & !is.factor(preds[[gej.dist]])) {
     preds[[gej.dist]] = fct_rev(factor(preds[[gej.dist]], ordered=T))
-  } else if (length(gej.dist <= 0)) {
+  } else if (length(gej.dist) <= 0) {
     preds[[gej.dist]] = 1
   }
-  preds = preds %>% mutate_if(is.numeric, list(~factor(.,ordered=T)))
+  
+  if (!is.factor(preds[[col]])) {
+    preds[[col]] = factor(preds[[col]], ordered=T)
+  }
+  
+  preds = preds %>% mutate_if(is.numeric, list(~factor(.,ordered=T))) %>%
+    mutate(Risk = factor(Risk, levels=names(riskColors()), ordered=T))
   
   p = ggplot(preds, aes_(as.name(col), as.name(gej.dist))) +
     geom_tile(aes(fill=Risk), color='white',size=2) + 
-    scale_fill_manual(values=riskColors(), limits=names(riskColors())) +
+    scale_fill_manual(values=unlist(riskColors()), limits=names(riskColors())) +
     labs(y='Esophageal Location (GEJ...)')
   
   if (dir == 'rev') p = p + scale_x_discrete(limits=rev(levels(preds[[col]])))
@@ -200,14 +208,23 @@ patientEndoscopyPlot<-function(brr) {
   if (length(which(class(brr) %in% c('BarrettsRiskRx'))) <= 0)
     stop("BarrettsRiskRx required")
   
+  printRisk <- function(x,low,high, risk='Unknown') {
+    img = switch(risk, 
+                 'High'='img/Human_body_silhouette-RED.png',
+                 'Moderate'='img/Human_body_silhouette-YELLOW.png',
+                 'Low'='img/Human_body_silhouette-BLUE.png',
+                 'Unknown'='img/Human_body_silhouette-GREY.png')
+    paste0(paste0(c("",rep(paste0('<img src="',img,'" alt="%" width="8"></img>'), x)), collapse=""), ' <b>',x, '%</b> (',low,'%-',high,'%)')
+  } 
+  
   preds = absoluteRiskCI(brr)
   preds = preds %>% rowwise() %>% dplyr::mutate( img=printRisk(Probability*100,CI.low*100,CI.high*100,Risk) )
 
   ggplot(preds, aes(Endoscopy, Probability)) + ylim(0,1) +
     geom_line(color='grey') + 
-    geom_errorbar(aes(ymin=CI.low,ymax=CI.high, color=Risk), width=5, show.legend=F) + 
+    geom_errorbar(aes(ymin=CI.low,ymax=CI.high), color='grey39', width=3, show.legend=F, size=1) + 
     geom_point(aes(color=Risk), size=5) + 
-    scale_color_manual(values=riskColors(), limits=names(riskColors())) + 
+    scale_color_manual(values=unlist(riskColors()), limits=names(riskColors())) + 
     scale_x_date(date_breaks = "2 month", date_labels = "%b %Y") +
     labs(y='Absolute Risk', x='Endoscopy Date',title='Absolute risks over time') + 
     theme_bw() + theme(legend.position='bottom', axis.text.x = element_text(angle=45, hjust=1))
