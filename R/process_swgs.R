@@ -678,7 +678,7 @@ prepRawSWGS<-function(raw.data,fit.data,blacklist = readr::read_tsv(system.file(
     colnames(df)[-infoCols] = colnames(fit.data)[countCols]
     df = base::merge(df, chr.info[,c('chr','chr.length')], by.x='chrom',by.y='chr',all.x=T)
     for (col in countCols) {
-      tmp = reshape::melt(df[,c(infoCols, col)], measure.vars=colnames(fit.data)[col])
+      tmp = reshape2::melt(df[,c(infoCols, col)], measure.vars=colnames(fit.data)[col])
       p = ggplot(tmp, aes(x=1:chr.length)) + ylim(c(0, quantile(tmp$value, probs=0.75, na.rm=T)*2)) +
         facet_grid(~chrom, space='free', scales='free') +
         geom_point( aes(start, value), color='darkred', alpha=.4) +  
