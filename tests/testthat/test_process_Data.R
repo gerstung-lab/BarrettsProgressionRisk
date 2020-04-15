@@ -15,6 +15,7 @@ test_that('internal data', {
   
   expect_equal(dim(BarrettsProgressionRisk:::be_model$fit.data), c(773, 634))
   
+
 })
 
 test_that("loadSampleInfo", {

@@ -239,10 +239,11 @@ qdna.to.probes<-function(kb) {
 #' @author skillcoyne
 #' @export
 segmentRawData<-function(info, raw.data, fit.data, blacklist=readr::read_tsv(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), col_names=T, col_types='cii'), gamma2=250, kb=50, cutoff=0.008, multipcf=T, logTransform=F, cache.dir=getcachedir(), build='hg19', verbose=T) {
-  
-  intPloidy=F  # This wasn't terribly useful. Leaving the code in place for the moment but setting it to false by default.
-  if (intPloidy & cutoff < 0.03) cutoff = cutoff*2
-  
+  #intPloidy=F  # This wasn't terribly useful. Leaving the code in place for the moment but setting it to false by default.
+  #if (intPloidy & cutoff < 0.03) cutoff = cutoff*2
+
+  if (cutoff %% 1 == 0) cutoff = cutoff + 0.0001
+
   min.probes = qdna.to.probes(kb)
 
   if (!'SampleInformation' %in% class(info))
@@ -268,10 +269,10 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=readr::read_tsv(sys
   
   chr.info = chrInfo(build=build)
   
-  fit.data = fit.data %>% dplyr::mutate_at(vars(dplyr::matches('chr')),list(factor),levels=levels(chr.info$chr), ordered=T) %>%
+  fit.data = fit.data %>% dplyr::mutate_at(vars(dplyr::matches('chr')),list(~factor(.,levels=levels(chr.info$chr), ordered=T))) %>%
     dplyr::arrange_at( vars(dplyr::matches('chr'), dplyr::matches('start')), list() )
   
-  raw.data = raw.data %>% mutate_at(vars(dplyr::matches('chr')), list(factor),levels=levels(chr.info$chr), ordered=T) %>% 
+  raw.data = raw.data %>% mutate_at(vars(dplyr::matches('chr')), list(~factor(.,levels=levels(chr.info$chr), ordered=T))) %>% 
     dplyr::arrange_at( vars(dplyr::matches('chr'), dplyr::matches('start')), list() )
   
   countCols = grep('loc|feat|chr|start|end', colnames(fit.data), invert=T)
@@ -292,7 +293,7 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=readr::read_tsv(sys
     countCols = countCols[which(colnames(fit.data)[countCols] %in% smps)]
   }
 
-  prepped = prepRawSWGS(raw.data,fit.data,blacklist,logTransform)
+  prepped = prepRawSWGS(raw.data,fit.data,blacklist,F)
   data = prepped$data
 
   raw.variance = data %>% summarise_at(vars(-chrom, -start), list(~sd(.,na.rm=T))) 
@@ -351,7 +352,7 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=readr::read_tsv(sys
   resids = .calculateSegmentResiduals(res, data, verbose=verbose)
   resids = resids[which(!is.na(sdevs))]
   
-  if (intPloidy) res = res %>% dplyr::mutate_at(vars(info$Sample), list( ~round(.,1) ))
+  #if (intPloidy) res = res %>% dplyr::mutate_at(vars(info$Sample), list( ~round(.,1) ))
 
   cvg<-function(x) {
     x = na.omit(x)
@@ -388,6 +389,7 @@ segmentRawData<-function(info, raw.data, fit.data, blacklist=readr::read_tsv(sys
   if (verbose) message('Calculating sample residual variance.')
   pvr = .per.sample.residual.variance(resids)
   digits = length(unlist((strsplit(unlist(strsplit(as.character(cutoff), '\\.'))[2], ''))))
+  if (digits == 1) cutoff  
   pvr = pvr %>% mutate_at(vars(contains('MAD')), list(round), digits) %>% mutate(Pass = round(pvr$varMAD_median, 3) <= cutoff)
   
   qcsamples = pvr %>% filter(Pass) %>% dplyr::select(dplyr::matches('sample')) %>% pull
@@ -641,9 +643,9 @@ tileSegments<-function(swgsObj, size=5e6, verbose=T) {
 }
 
 # preps data for segmentation
-prepRawSWGS<-function(raw.data,fit.data,blacklist = readr::read_tsv(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), col_names=T, col_types='cii'), logTransform=F,plot=T,verbose=F) {
+prepRawSWGS<-function(raw.data,fit.data,blacklist = readr::read_tsv(system.file("extdata", "qDNAseq_blacklistedRegions.txt", package="BarrettsProgressionRisk"), col_names=T, col_types='cii'), plot=T,verbose=F) {
 
-  intPloidy=F
+#  intPloidy=F
   
   if (ncol(blacklist) < 3)
     stop('Blacklisted regions missing or incorrectly formatted.\nExpected columnes: chromosome start end')
@@ -668,7 +670,6 @@ prepRawSWGS<-function(raw.data,fit.data,blacklist = readr::read_tsv(system.file(
   if (length(negs) > 0) window.depths[negs] = 0
 
   window.depths = matrix(window.depths, ncol=length(countCols))
-  if (intPloidy) window.depths = apply(window.depths, 2, function(x) x/(median(x,na.rm=T)/2) )
 
   plotlist = list()
   if (plot) {
@@ -682,7 +683,7 @@ prepRawSWGS<-function(raw.data,fit.data,blacklist = readr::read_tsv(system.file(
       p = ggplot(tmp, aes(x=1:chr.length)) + ylim(c(0, quantile(tmp$value, probs=0.75, na.rm=T)*2)) +
         facet_grid(~chrom, space='free', scales='free') +
         geom_point( aes(start, value), color='darkred', alpha=.4) +  
-        labs(title=colnames(fit.data[col]), x='Chromosomes', y="corrected depth/15KB") + 
+        labs(title=colnames(fit.data[col]), x='Chromosomes', y="corrected depth") + 
         theme_bw() + theme(axis.text.x=element_blank(), panel.spacing.x=unit(0,'lines'))
       plotlist[[colnames(fit.data)[col]]] = p
     }
@@ -703,7 +704,10 @@ prepRawSWGS<-function(raw.data,fit.data,blacklist = readr::read_tsv(system.file(
   if (length(countCols) == 1) window.depths = as.data.frame(window.depths)
 
   window.depths.standardised = as.data.frame(window.depths[which(!fit.data$in.blacklist),])
-  if (logTransform) window.depths.standardised = log2( window.depths.standardised+abs(min(window.depths.standardised, na.rm=T))+1 )
+  
+  # transformations?  Not sure about the log transformation
+  #window.depths.standardised = sqrt( window.depths.standardised+abs(min(window.depths.standardised, na.rm=T)) * 0.375 ) 
+  #if (logTransform) window.depths.standardised = log2( window.depths.standardised+abs(min(window.depths.standardised, na.rm=T))+.Machine$double.xmin ) # this was the wrong way anyhow
 
   fit.data = fit.data[!fit.data$in.blacklist,-ncol(fit.data)]
   sdevs = sapply(c(1:length(countCols)), function(s) {

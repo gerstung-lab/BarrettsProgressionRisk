@@ -155,7 +155,8 @@ showModelPredictions<-function(type='P') {
 #'
 #' @author skillcoyne
 #' @export
-patientRiskTilesPlot<-function(brr, col='Endoscopy', direction=c('fwd','rev')) {
+patientRiskTilesPlot<-function(brr, col='Endoscopy', direction=c('fwd','rev'), scaleF = 1) {
+  if (scaleF <= 0) scaleF = 0.1
   dir = match.arg(direction)  
   
   if (length(which(class(brr) %in% c('BarrettsRiskRx'))) > 0) {
@@ -180,20 +181,20 @@ patientRiskTilesPlot<-function(brr, col='Endoscopy', direction=c('fwd','rev')) {
     mutate(Risk = factor(Risk, levels=names(riskColors()), ordered=T))
   
   p = ggplot(preds, aes_(as.name(col), as.name(gej.dist))) +
-    geom_tile(aes(fill=Risk), color='white',size=2) + 
+    geom_tile(aes(fill=Risk), color='white',size=2*scaleF) + 
     scale_fill_manual(values=unlist(riskColors()), limits=names(riskColors())) +
     labs(y='Esophageal Location (GEJ...)')
   
   if (dir == 'rev') p = p + scale_x_discrete(limits=rev(levels(preds[[col]])))
 
   if ('Pathology' %in% colnames(preds)) {
-    p = p + geom_point(aes(shape=Pathology), fill='white', color='white', size=8) + 
+    p = p + geom_point(aes(shape=Pathology), fill='white', color='white', size=8*scaleF) + 
         scale_shape_manual(values=c(1,0,15,24,25), limits=c('NDBE','ID','LGD','HGD','IMC'), labels=c('NDBE','ID','LGD','HGD','IMC'), guide=guide_legend(override.aes=list(fill='white', color='white')))
     }
   
   if ('Patient' %in% colnames(preds)) p = p + labs(title=unique(preds$Patient))
   
-  p + theme_bw() + theme(legend.key=element_rect(fill='grey39'), panel.background=element_rect(colour = 'black'), panel.grid.major=element_blank(), panel.spacing = unit(0.2, 'lines'), panel.border = element_rect(color="black", fill=NA, size=0.5), legend.position = 'bottom'  ) 
+  p + theme_bw() + theme(legend.key=element_rect(fill='grey39'), panel.background=element_rect(colour = 'black'), panel.grid.major=element_blank(), panel.spacing = unit(0.2, 'lines'), panel.border = element_rect(color="black", fill=NA, size=0.5), legend.position = 'bottom', axis.text = element_text(size = 12) ) 
 }
 
 
@@ -270,23 +271,24 @@ mountainPlots<-function(tiles, coefs, cvRR, build, annotate=T) {
   samples = rownames(tiles)
   locs = BarrettsProgressionRisk:::get.loc(tiles[,-ncol(tiles),drop=F])
 
-  #coefs =  as.matrix(coef(brr$be.fit$fit, brr$be.fit$lambda))
+  #coefs =  as.matrix(coef(brr$be.model$fit, brr$be.model$lambda))
   if (!is.null(coefs)) {
     coefs = coefs[which(coefs != 0),][-1]
-    
-    coefs = tibble::enframe(coefs, name='feature') %>% dplyr::rename(coef = 'value') %>%
-      separate(feature, c('chr','start','end'), sep = ':|-', remove = F) %>% 
-      mutate_at(vars(start, end), as.double) %>%       
-      mutate(chr = factor(chr, levels=levels(locs$chr), ordered=T))
-    
-    #if (is.data.frame(cvRR) | is.matrix(cvRR)) cvRR = cvRR[,'cvRR']
-  
-    cvdf = cvRR %>% separate(label, c('chr','start','end'), sep=':|-', remove=F) %>%
-      mutate_at(vars(start, end), as.double) %>%       
-      mutate(chr = factor(chr, levels=levels(locs$chr), ordered=T)) %>%
-      arrange(chr,start)
 
-    cvdf = full_join(cvdf, coefs, by=c('label'='feature','chr','start','end', 'coef'))
+
+    coefs = tibble::enframe(coefs, name='feature') %>% dplyr::rename(coef = 'value') %>%
+      tidyr::separate(feature, c('chr','start','end'), sep = ':|-', remove = F) %>% 
+      dplyr::mutate_at(vars(start, end), as.double) %>%       
+      dplyr::mutate(chr = factor(chr, levels=levels(locs$chr), ordered=T))
+    
+    if (is.vector(cvRR)) cvRR = tibble::enframe(cvRR, name='label', value='cvRR')
+
+    cvdf = cvRR %>% tidyr::separate(label, c('chr','start','end'), sep=':|-', remove=F) %>%
+      dplyr::mutate_at(vars(start, end), as.double) %>%       
+      dplyr::mutate(chr = factor(chr, levels=levels(locs$chr), ordered=T)) %>%
+      dplyr::arrange(chr,start) 
+
+    cvdf = dplyr::full_join(cvdf, coefs, by=c('label'='feature','chr','start','end'))
   }
   
   plist = list()
@@ -294,11 +296,10 @@ mountainPlots<-function(tiles, coefs, cvRR, build, annotate=T) {
     df = bind_cols(locs,tibble('sample'=tiles[sample, -ncol(tiles)]))
 
     melted = as_tibble(reshape2::melt(id.vars=c('chr','start','end'), df))
-    melted = left_join(melted,chr.info[,c('chr','chr.length')],by='chr')
-    if (!is.null(coefs)) {
-      melted = as_tibble(left_join(melted,cvdf, by=c('chr','start','end')) )
-    }
-
+    melted = dplyr::left_join(melted,chr.info[,c('chr','chr.length')],by='chr')
+    if (!is.null(coefs)) 
+      melted = as_tibble(dplyr::left_join(melted,cvdf, by=c('chr','start','end')) )
+    
     arms = melted %>% filter(end-start > median(melted$end-melted$start)*2)
     segs = melted %>% filter(end-start <= median(melted$end-melted$start)*2)
     
@@ -315,7 +316,7 @@ mountainPlots<-function(tiles, coefs, cvRR, build, annotate=T) {
     segs = segs %>% rowwise() %>% dplyr::mutate( 
       CN = cn(value,c(-1,1)),
       annotate = ifelse(!is.na(coef),cn(value,c(0,0)),'norm'),
-    ) %>% mutate(
+    ) %>% dplyr::mutate(
       CN = factor(CN, levels = c('loss','norm','gain')),
       annotate = factor(annotate, levels = c('loss','norm','gain'))
     )
@@ -323,7 +324,7 @@ mountainPlots<-function(tiles, coefs, cvRR, build, annotate=T) {
     arms = arms %>% rowwise() %>% dplyr::mutate( 
         CN = cn(value,c(-1,1)), 
         annotate = ifelse(!is.na(coef),cn(value,c(0,0)),'norm')) %>% 
-      filter(!is.na(coef)) %>% mutate(
+      filter(!is.na(coef)) %>% dplyr::mutate(
         CN = factor(CN, levels = c('loss','norm','gain')),
         annotate = factor(annotate, levels = c('loss','norm','gain'))
       )

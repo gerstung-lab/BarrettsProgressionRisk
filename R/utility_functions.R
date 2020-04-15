@@ -22,15 +22,15 @@ model.pred.confidence<-function(df) {
   
   pred.confidence = qt %>% dplyr::group_by(quants) %>% 
     dplyr::mutate( 'perc'=P/sum(NP,P), 'p.value'=ft.fun(NP,P)$p.value, 'conf'=ifelse(p.value < 0.05, '*', '') ) %>% 
-    separate(quants, c('r1','r2'), ',', remove = F) %>% 
-    mutate_at(vars('r1','r2'), list(sub), pattern='\\[|\\]|\\(', replacement='') %>% mutate_at(vars(r1,r2), as.double) %>%  
+    tidyr::separate(quants, c('r1','r2'), ',', remove = F) %>% 
+    dplyr::mutate_at(vars('r1','r2'), list(sub), pattern='\\[|\\]|\\(', replacement='') %>% mutate_at(vars(r1,r2), as.double) %>%  
     dplyr::mutate(Risk = ifelse(round(perc,1)<.5, 'Low','High'))
   
   pred.confidence = bind_cols(pred.confidence, 
                               data.frame(ci.low=qbeta(0.025, shape1=pred.confidence$P+.5, shape2 = pred.confidence$NP+.5),
                                          ci.high=qbeta(0.975, shape1=pred.confidence$P+.5, shape2 = pred.confidence$NP+.5)))
   
-  pred.confidence %>% mutate(Risk = case_when( r2 == 0.5 | r1 == 0.3 ~ 'Moderate', TRUE ~ Risk ))
+  pred.confidence %>% dplyr::mutate(Risk = dplyr::case_when( r2 == 0.5 | r1 == 0.3 ~ 'Moderate', TRUE ~ Risk ))
 }
 
 
@@ -77,7 +77,7 @@ chrInfo<-function(chrs=c(1:22, 'X','Y'), prefix='chr', build='hg19', file=NULL, 
     cytoband.file = paste(.Platform$file.sep,'tmp', paste(build,basename(cytoband.url),sep='_'), sep='/')
 
     tryCatch({
-      download.file(cytoband.url, cytoband.file, cacheOK = T)
+      download.file(cytoband.url, cytoband.file, cacheOK = T, quiet = verbose)
     }, error = function(e)
       stop(paste("Could not download", cytoband.url, "\n", e))
     )

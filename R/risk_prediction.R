@@ -4,7 +4,7 @@ be.model.fit<-function(model, s, kb, tile.size,
                        tile.mean, arms.mean, tile.sd, arms.sd, 
                        cx.mean, cx.sd, per.pt.nzcoefs, cvRR, df = NULL, pconf = NULL) {
 
-  if (is.null(pconf)) pconf = pred.confidence
+  if (is.null(pconf)) pconf = be_model$pred.confidence
   
   be.model <- list(
     fit = model, lambda = s, qdnaseq_kb = kb, tile.size = tile.size,
@@ -303,6 +303,7 @@ adjustRisk <- function(brr, offset=c('mean','max','min'), by=c('endoscopy','samp
   total = cbind.data.frame('NP'=43,'P'=45)
   cases = total[['P']]
   
+  # so...not sure why I'm multiplying by 100 this way.  This is the same as saying cases/0.01
   mn = round((cases/(0.01*100))*100)
   m = round((cases/(0.0225*100))*100)
   mx = round((cases/(0.035*100))*100)
@@ -440,7 +441,7 @@ rx<-function(brr, by=c('endoscopy','sample')) {
     
     if (i == nrow(preds)) break;
   }
-  rules = rules %>% mutate(Rx = map_chr(Rule, .rule.rx))
+  rules = rules %>% dplyr::mutate(Rx = purrr::map_chr(Rule, .rule.rx))
   
 
   return(rules)
