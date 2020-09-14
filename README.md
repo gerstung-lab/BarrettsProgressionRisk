@@ -4,12 +4,47 @@ To generate the report provided with this package you need to install pandoc ver
 http://pandoc.org/installing.html
 
 
-# Example Usage for Predicting Barrett's Progression
+# Example Usage for Predicting Barrett's Progression 
 
-Using your own data and the qdnaseq.R script found in the example/ directory first process one or more BAM files from a single patient and output the files into a unique directory. Then run `predictRisk(path='.')`
+## Using your own data
+
+1. To process your own BAM files, ensure you have installed QDNAseq from Bioconductor. Recommend using the default binsize and minMapQ parameters as set in order to make your data comparable to the included model.
+https://bioconductor.org/packages/release/bioc/html/QDNAseq.html
+
+```
+library(BarrettsProgressionRisk)
+
+runQDNAseq<-function(bam=NULL,path=NULL,outputPath=NULL, minMapQ=37, binsize=50) {
+# Provide either a single bam file as an argument bam=<my file> or a path to one or more bam files path=<my bam path>
+
+runQDNAseq(bam=<my file>, outputPath=<qdnaseq output path>)
+```
+
+2. Load the sample information for your samples.
+
+```
+# See the example of sample information table in example/endoscopy.xlsx 
+
+info = loadSampleInformation(<my info table>)
+```
+
+3. Segment the fitted and raw QDNAseq files generated above.
+
+```
+segObj = segmentRawData(info, <outputPath/rawReadCounts.txt>, <outputPath/fittedReadCounts.txt>, verbose=F) 
 
 ```
 
+4. Predict the risk for the segmented data.
+
+```
+sampleRisk = predictRiskFromSegments(segObj, verbose=F)
+
+```
+
+## Example using provided fitted and raw qdnaseq files:
+
+```
 library(BarrettsProgressionRisk)
 
 # Load example data set
