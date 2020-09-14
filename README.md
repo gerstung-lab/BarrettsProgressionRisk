@@ -14,7 +14,6 @@ https://bioconductor.org/packages/release/bioc/html/QDNAseq.html
 ```
 library(BarrettsProgressionRisk)
 
-runQDNAseq<-function(bam=NULL,path=NULL,outputPath=NULL, minMapQ=37, binsize=50) {
 # Provide either a single bam file as an argument bam=<my file> or a path to one or more bam files path=<my bam path>
 
 runQDNAseq(bam=<my file>, outputPath=<qdnaseq output path>)
