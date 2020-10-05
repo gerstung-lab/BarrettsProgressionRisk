@@ -1,7 +1,7 @@
 Package: BarrettsProgressionRisk
 Title: Prognositc adenocarcinoma risk prediction for Barrett's Esophagus 
 Type: Package
-Version: 1.0
+Version: 1.01
 Date: 2020-01-10
 Authors@R: person("Sarah","Killcoyne", email="skillcoy@ebi.ac.uk", role=c("aut","cre"))
 Description: Process and predict risk of adenocarcinoma progression from shallow whole-genome sequencing data. 

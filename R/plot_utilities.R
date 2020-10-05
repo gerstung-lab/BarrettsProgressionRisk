@@ -167,9 +167,10 @@ patientRiskTilesPlot<-function(brr, col='Endoscopy', direction=c('fwd','rev'), s
   }
 
   gej.dist = grep('Distance',colnames(preds),value=T)
-  if (length(gej.dist) > 0 & !is.factor(preds[[gej.dist]])) {
+  if (length(gej.dist) > 0 && !is.factor(preds[[gej.dist]])) {
     preds[[gej.dist]] = fct_rev(factor(preds[[gej.dist]], ordered=T))
   } else if (length(gej.dist) <= 0) {
+    gej.dist = 'Distance'
     preds[[gej.dist]] = 1
   }
   

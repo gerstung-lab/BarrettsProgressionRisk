@@ -85,9 +85,14 @@ tileSamples<-function(obj, be.model=NULL, scale=T, MARGIN=2, verbose=T) {
   mergedDf = subtractArms(segtiles$tiles, armtiles$tiles)
   mergedDf = cbind(mergedDf, 'cx'=cx.score)
   
-  pse = per.sample.error(mergedDf, segtiles$error, armtiles$error, be.model)
+  retlist = list('tiles'=mergedDf, 'residuals'=NULL, 'per.sample.error'=NULL)
   
-  return(list('tiles'=mergedDf, 'residuals'=pse$Xerr, 'per.sample.error'=pse$error))  
+  if (!is.null(segtiles$error)) {
+    pse = per.sample.error(mergedDf, segtiles$error, armtiles$error, be.model)
+    retlist = list('tiles'=mergedDf, 'residuals'=pse$Xerr, 'per.sample.error'=pse$error)
+  }
+  
+  return(retlist)  
 }
 
 per.sample.error<-function(df, seg.tile.error, arm.tile.error, be.model) {
@@ -109,33 +114,48 @@ per.sample.error<-function(df, seg.tile.error, arm.tile.error, be.model) {
 }
 
 
-predictRisk<-function(obj, merged.tiles, be.model=NULL, verbose=T) {
+predictRisk<-function(merged.tiles, be.model=NULL, obj=NULL, info=NULL, verbose=T) {
   if (is.null(be.model)) {
     be.model = BarrettsProgressionRisk:::be_model
   } 
+  
+  if (is.null(obj) & is.null(info))
+    stop("Need either a SegmentedSWGS or SampleInformation object")
 
+  sample.info = info
+  if (!is.null(obj)) {
+    sample.info = obj$sample.info %>% dplyr::filter(Sample %in% (sampleResiduals(obj) %>% dplyr::filter(Pass) %>% dplyr::select(dplyr::matches('sample')) %>% pull))
+  }
+  
   sparsed_test_data = Matrix(data=0, nrow=nrow(merged.tiles$tiles),  ncol=ncol(merged.tiles$tiles),
                              dimnames=list(rownames(merged.tiles$tiles),colnames(merged.tiles$tiles)), sparse=T)
   for(i in colnames(merged.tiles$tiles)) sparsed_test_data[,i] = merged.tiles$tiles[,i]
   
-  perSampleError = tibble('Sample'=names(merged.tiles$per.sample.error),'Error'=merged.tiles$per.sample.error)
-  perSampleError = left_join(perSampleError, obj$sample.info, by='Sample') %>% 
-    dplyr::select('Sample','Error','Endoscopy')
+  if (!is.null(merged.tiles$per.sample.error)) {
+    perSampleError = tibble('Sample'=names(merged.tiles$per.sample.error),'Error'=merged.tiles$per.sample.error)
+    perSampleError = left_join(perSampleError, sample.info, by='Sample') %>% dplyr::select('Sample','Error','Endoscopy')
+  } else {
+    perSampleError = NULL
+  }
   
   # Predict and generate absolute probabilities
   RR = predict(be.model$fit, newx=sparsed_test_data, s=be.model$lambda, type='link')
   probs = BarrettsProgressionRisk:::pi.hat(RR)
   
   per.sample.preds = full_join(tibble('Sample'=rownames(probs), 'Probability'=round(probs[,1],2), 
-                                      'Relative Risk'=RR[,1], 'Risk'=sapply(probs[,1], .risk, be.model$pred.confidence)), 
-                               obj$sample.info %>% dplyr::filter(Sample %in% as.character(sampleResiduals(obj) %>% dplyr::filter(Pass) %>% dplyr::select(dplyr::matches('sample')) %>% pull) ), 
-                               by='Sample')
+                                      'Relative Risk'=RR[,1], 'Risk'=sapply(probs[,1], BarrettsProgressionRisk:::.risk, be.model$pred.confidence)), 
+                              sample.info, by='Sample')
   
-  per.endo.preds = .setUpRxTablePerEndo(per.sample.preds, 'max', verbose) %>% rowwise() %>% 
-    mutate( Risk=.risk(Probability,be.model$pred.confidence))
-  perEndoError = .setUpRxTablePerEndo(perSampleError, 'max', F) %>% dplyr::select('Endoscopy','Error')
+  per.endo.preds = BarrettsProgressionRisk:::.setUpRxTablePerEndo(per.sample.preds, 'max', verbose) %>% rowwise() %>% 
+    mutate( Risk = BarrettsProgressionRisk:::.risk(Probability,be.model$pred.confidence))
   
-  psp = list('per.endo'=per.endo.preds, 'per.sample'=per.sample.preds, 'segmented'=obj, 'per.sample.error'=perSampleError, 'per.endo.error'=perEndoError, 'tiles'=merged.tiles$tiles, 'tiles.resid'=merged.tiles$residuals, 'be.model'=be.model)
+  if (!is.null(merged.tiles$per.sample.error)) {
+    perEndoError = BarrettsProgressionRisk:::.setUpRxTablePerEndo(perSampleError, 'max', F) %>% dplyr::select('Endoscopy','Error')
+  } else {
+    perEndoError = NULL
+  }
+  
+  psp = list('per.endo'=per.endo.preds, 'per.sample'=per.sample.preds, 'segmented'=obj, 'per.sample.error'=perSampleError, 'per.endo.error'=perEndoError, 'tiles'=merged.tiles$tiles, 'tiles.resid'=merged.tiles$residuals, 'be.model'=be.model, 'sample.info'=sample.info)
   
   class(psp) <- c('BarrettsRiskRx', class(psp))
   return(psp)
@@ -167,14 +187,14 @@ predictRiskFromSegments<-function(obj, be.model = NULL, verbose=T) {
     
   # Tile, scale, then merge segmented values into 5Mb and arm-length windows across the genome.
   binnedSamples = tryCatch({
-    tileSamples(obj, be.model, scale=T, MARGIN=2, verbose=verbose)
+    BarrettsProgressionRisk:::tileSamples(obj, be.model, scale=T, MARGIN=2, verbose=verbose)
   }, error = function(e) {
     msg = paste("ERROR tiling segmented data:", e)
     stop(msg)
   })
   
   # Predict  
-  psp = predictRisk(obj, binnedSamples, be.model, verbose)
+  psp = predictRisk(binnedSamples, be.model, obj, verbose)
   return(psp)
 }
 
@@ -300,6 +320,7 @@ adjustRisk <- function(brr, offset=c('mean','max','min'), by=c('endoscopy','samp
   if (length(grep('segmented',names(brr))) <= 0)
     stop("Original BarrettsRiskRx object required. Adjusted object should not be re-adjusted.")
 
+  # TODO calculate this from the model!
   total = cbind.data.frame('NP'=43,'P'=45)
   cases = total[['P']]
   
@@ -436,6 +457,8 @@ rx<-function(brr, by=c('endoscopy','sample')) {
       rules = add_row(rules, 'Time 1' = t1, 'Time 2' = t2, 'Rule' = rule) 
     }
 
+    if (i == 1 && i == nrow(preds)) break;
+    
     # If the last pair resulted in an increased surveillance rx than this one should do as well?
     if ( i == nrow(preds) && rules[i,'Rule'] > rules[(i-1), 'Rule'] ) rules[i,'Rule'] = rules[(i-1), 'Rule'] 
     

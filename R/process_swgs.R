@@ -539,9 +539,12 @@ tileSegments<-function(swgsObj, size=5e6, verbose=T) {
       x[is.na(x)] = median(x,na.rm=T)
       return(x)
     })
+    errorDf = t(errorDf)
+  } else {
+    errorDf = NULL
   }
-  
-  return(list('tiles'=t(mergedDf), 'error'=t(errorDf)))
+
+  return(list('tiles'=t(mergedDf), 'error'=errorDf))
 }
 
 
