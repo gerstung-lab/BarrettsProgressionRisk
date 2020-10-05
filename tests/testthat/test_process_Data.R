@@ -98,7 +98,7 @@ test_that('predict risk', {
   
   expect_true(class(prr)[1] == 'BarrettsRiskRx')
   
-  expect_equal(names(prr), c("per.endo","per.sample","segmented","per.sample.error","per.endo.error","tiles","tiles.resid","be.model"))
+  expect_equal(names(prr), c("per.endo","per.sample","segmented","per.sample.error","per.endo.error","tiles","tiles.resid","be.model","sample.info"))
   
   expect_equal(dim(prr$per.endo.error), c(2,2))
   expect_equal(dim(prr$per.sample.error), c(3,3))
