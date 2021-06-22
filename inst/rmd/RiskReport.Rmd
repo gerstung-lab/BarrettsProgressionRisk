@@ -218,9 +218,10 @@ do.call(gridExtra::grid.arrange, c(plist, ncol=1))
 ```{r} 
 maxCol = ifelse(ncol(segmentedValues(pr)) < 8, ncol(segmentedValues(pr)) , 8)
 
-segmentedValues(pr)[ sample(1:nrow(segmentedValues(pr)), 10) ,c(1:maxCol)] %>% 
-  kable(row.names=F, caption='Example regions of the segmented data.') %>%
-  kable_styling(bootstrap_options=c('striped','condensed',full_width=F, position='left'))
+segmentedValues(pr) %>% 
+  kable(row.names=F, caption=paste('Segmented data:', nrow(segmentedValues(pr)), 'rows')) %>%
+  kable_styling(bootstrap_options=c('striped','condensed',full_width=F, position='left')) %>%
+  scroll_box(width = "100%", height = "400px")
 ```
 
 
